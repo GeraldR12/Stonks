@@ -54,6 +54,7 @@ public abstract class AbstractPluginGui {
      */
     public abstract Gui build();
 
+    public abstract Gui getGui();
 }
 
 

@@ -1,15 +1,10 @@
 package me.geraldr12.commands;
 
 import me.geraldr12.Stonks;
-import me.geraldr12.commands.validators.PositiveIntegerArgumentParser;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.*;
-import dev.hugog.minecraft.dev_command.arguments.parsers.IntegerArgumentParser;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -18,93 +13,82 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Buy Command
- *
- * <p>Command that allow players to buy in-game stocks.
- * <p>Syntax: /invest buy [companyID] [amount]
- *
- * @author Hugo1307
- * @since v1.0.0
- */
-@AutoValidation
-@Command(alias = "buy", description = "buyCommand.description", permission = "blockstreet.command.buy", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, Economy.class, CompaniesService.class, PlayersService.class, Stonks.class})
-@Arguments({
-        @Argument(name = "companyID", description = "buyCommand.companyIdArg", position = 0, parser = IntegerArgumentParser.class),
-        @Argument(name = "amount", description = "buyCommand.amountArg", position = 1, parser = PositiveIntegerArgumentParser.class)
-})
-public class BuyCommand extends BukkitDevCommand {
+// Change 'extends BukkitDevCommand' to 'implements MainCommand.SubCommand'
+public class BuyCommand implements MainCommand.SubCommand {
 
-    public BuyCommand(BukkitCommandData command, CommandSender commandSender, String[] args) {
-        super(command, commandSender, args);
+    private final Stonks plugin;
+
+    // Use a standard constructor instead of the framework one
+    public BuyCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        Messages messages = getDependency(Messages.class);
-        Economy vaultEconomy = getDependency(Economy.class);
-        CompaniesService companiesService = getDependency(CompaniesService.class);
-        PlayersService playersService = getDependency(PlayersService.class);
-        Stonks plugin = getDependency(Stonks.class);
-        Player player = (Player) getCommandSender();
+        Messages messages = plugin.getMessages();
+        Economy vaultEconomy = plugin.getEconomy();
+        CompaniesService companiesService = plugin.getCompaniesService();
+        PlayersService playersService = plugin.getPlayersService();
 
-        // Arguments will always be valid, since we are validating them with DevCommands.
-        long companyId = Long.parseLong(getArgs()[0]);
-        int numberOfSharesToBuy = Integer.parseInt(getArgs()[1]);
-
-        if (!companiesService.companyExists(companyId)) {
-            player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
-            return;
+        // Validate basic argument length: [id] [amount]
+        if (args.length < 2) {
+            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest buy <id> <amount>");
+            return true;
         }
 
-        CompanyDao company = companiesService.getCompanyById(companyId);
-        if (company.isBankrupt()) {
-            player.sendMessage(messages.getPluginPrefix() + messages.getCannotBuyBankruptCompany());
-            return;
+        try {
+            long companyId = Long.parseLong(args[0]);
+            int numberOfSharesToBuy = Integer.parseInt(args[1]);
+
+            if (!companiesService.companyExists(companyId)) {
+                player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
+                return true;
+            }
+
+            CompanyDao company = companiesService.getCompanyById(companyId);
+            if (company.isBankrupt()) {
+                player.sendMessage(messages.getPluginPrefix() + messages.getCannotBuyBankruptCompany());
+                return true;
+            }
+
+            if (!companiesService.hasEnoughShares(companyId, numberOfSharesToBuy)) {
+                player.sendMessage(messages.getPluginPrefix() + messages.getInsufficientActions());
+                return true;
+            }
+
+            // Logic check for share limits
+            int sharesLimit = plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer");
+            long playerSharesCount = playersService.getTotalPlayerSharesCount(player.getUniqueId());
+            if (sharesLimit > 0 && (playerSharesCount + numberOfSharesToBuy) > sharesLimit) {
+                player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCannotOwnMoreThanMaxShares(), sharesLimit));
+                return true;
+            }
+
+            double investmentPrice = companiesService.getCompanyInvestmentValue(companyId, numberOfSharesToBuy);
+            if (vaultEconomy.getBalance(player) < investmentPrice) {
+                player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getInsufficientMoney(), investmentPrice));
+                return true;
+            }
+
+            // Transaction
+            vaultEconomy.withdrawPlayer(player, investmentPrice);
+            companiesService.removeSharesFromCompany(companyId, numberOfSharesToBuy);
+            playersService.addSharesToPlayer(player.getUniqueId(), company, numberOfSharesToBuy);
+
+            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getBoughtActions(), numberOfSharesToBuy));
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(messages.getPluginPrefix() + "Error: ID and Amount must be numbers.");
         }
 
-        if (!companiesService.hasEnoughShares(companyId, numberOfSharesToBuy)) {
-            player.sendMessage(messages.getPluginPrefix() + messages.getInsufficientActions());
-            return;
-        }
-
-        int sharesLimit = plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer");
-        long playerSharesCount = playersService.getTotalPlayerSharesCount(player.getUniqueId());
-        if (sharesLimit > 0 && (playerSharesCount + numberOfSharesToBuy) > sharesLimit) {
-            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCannotOwnMoreThanMaxShares(), sharesLimit));
-            return;
-        }
-
-        double playerMoney = vaultEconomy.getBalance(player);
-        double investmentPrice = companiesService.getCompanyInvestmentValue(companyId, numberOfSharesToBuy);
-        double minimumBalance = plugin.getConfig().getDouble("Stonks.Limits.MinBalance");
-        double totalCost = investmentPrice + playersService.getTotalPortfolioValue(player.getUniqueId(), companiesService) * minimumBalance;
-        if (playerMoney < totalCost) {
-            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getInsufficientMoney(), totalCost));
-            return;
-        }
-
-        // Remove money
-        vaultEconomy.withdrawPlayer(player, investmentPrice);
-
-        companiesService.removeSharesFromCompany(companyId, numberOfSharesToBuy);
-        playersService.addSharesToPlayer(player.getUniqueId(), company, numberOfSharesToBuy);
-
-        player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
-                messages.getBoughtActions().replace("'", "''"),
-                numberOfSharesToBuy
-        ));
-
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] args) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            // Return a list of company IDs
-            CompaniesService companiesService = getDependency(CompaniesService.class);
-            return companiesService.getAllCompanies().stream()
+            return plugin.getCompaniesService().getAllCompanies().stream()
                     .map(company -> String.valueOf(company.getId()))
                     .collect(Collectors.toList());
         } else if (args.length == 2) {
@@ -112,5 +96,4 @@ public class BuyCommand extends BukkitDevCommand {
         }
         return List.of();
     }
-
 }

@@ -1,14 +1,10 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.utils.FormattingUtils;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.AutoValidation;
-import dev.hugog.minecraft.dev_command.annotations.Command;
-import dev.hugog.minecraft.dev_command.annotations.Dependencies;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.HoverEvent;
@@ -21,44 +17,42 @@ import java.util.List;
 
 /**
  * Companies command
- * <p>
- * Command to check the available companies with stocks to sell.
- * <p>
- * Syntax: /invest companies
- *
- * @author Hugo1307
- * @since v1.0.0
+ * Converted to standard Bukkit API via SubCommand interface.
  */
-@AutoValidation
-@Command(alias = "companies", description = "companiesCommand.description", permission = "blockstreet.command.companies", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, CompaniesService.class})
-public class CompaniesCommand extends BukkitDevCommand {
+public class CompaniesCommand implements MainCommand.SubCommand {
 
-    public CompaniesCommand(BukkitCommandData command, CommandSender commandSender, String[] args) {
-        super(command, commandSender, args);
+    private final Stonks plugin;
+
+    public CompaniesCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        Messages messages = getDependency(Messages.class);
-        CompaniesService companiesService = getDependency(CompaniesService.class);
+        Messages messages = plugin.getMessages();
+        CompaniesService companiesService = plugin.getCompaniesService();
 
-        Player player = (Player) getCommandSender();
+        // Check permission manually
+        if (!player.hasPermission("blockstreet.command.companies")) {
+            player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
+
         List<CompanyDao> companiesList = companiesService.getAllCompanies();
 
         player.sendMessage(messages.getPluginHeader());
         companiesList.forEach(company -> printCompanyDetails(player, messages, company));
         player.sendMessage(messages.getPluginFooter());
 
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] strings) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         return List.of();
     }
 
-    @SuppressWarnings("deprecation")
     private void printCompanyDetails(Player player, Messages messages, CompanyDao currentCompany) {
 
         TextComponent companyDetails = new TextComponent(ChatColor.GRAY + "[Details]");
@@ -75,7 +69,5 @@ public class CompaniesCommand extends BukkitDevCommand {
             player.spigot().sendMessage(companyDetails);
             player.sendMessage("");
         }
-
     }
-
 }

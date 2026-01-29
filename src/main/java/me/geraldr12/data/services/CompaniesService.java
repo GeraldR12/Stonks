@@ -43,8 +43,10 @@ public class CompaniesService implements Service {
                 .orElse(null);
     }
 
+    // Change the signature to include the UUID
+    // Update the signature to accept the UUID
     public CompanyDao createPlayerCompany(String companyName, int companyRisk, int companyShares, double companySharePrice,
-                                          Material companyIcon) {
+                                          Material companyIcon, String ownerUuid) {
         return this.createCompany(CompanyDao.builder()
                 .name(companyName)
                 .icon(companyIcon)
@@ -54,6 +56,7 @@ public class CompaniesService implements Service {
                 .initialSharePrice(companySharePrice)
                 .currentSharePrice(companySharePrice)
                 .historic(new SizedStack<>(500))
+                .ownerUuid(ownerUuid) // ADD THIS LINE HERE
                 .build()
         );
     }

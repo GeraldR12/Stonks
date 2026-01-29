@@ -30,6 +30,7 @@ public class CompanyDao implements Dao<CompanyEntity> {
     @Setter
     private int availableShares;
     private SizedStack<QuoteDao> historic;
+    private String ownerUuid; // The UUID of the player who owns this company
 
     @Override
     public CompanyEntity toEntity() {
@@ -45,6 +46,7 @@ public class CompanyDao implements Dao<CompanyEntity> {
         entity.setTotalShares(totalShares);
         entity.setAvailableShares(availableShares);
         entity.setHistoric(historic.stream().map(Dao::toEntity).collect(Collectors.toList()));
+        entity.setOwnerUuid(ownerUuid);
 
         return entity;
     }
@@ -65,7 +67,8 @@ public class CompanyDao implements Dao<CompanyEntity> {
                         entity.getHistoric().stream()
                                 .map(quote -> (QuoteDao) new QuoteDao().fromEntity(quote))
                                 .collect(Collectors.toList())
-                )
+                ),
+                entity.getOwnerUuid()
         );
     }
 

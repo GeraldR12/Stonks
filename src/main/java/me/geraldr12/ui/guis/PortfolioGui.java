@@ -4,7 +4,6 @@ import me.geraldr12.data.dao.InvestmentDao;
 import me.geraldr12.ui.AbstractPluginGui;
 import me.geraldr12.ui.GuiManager;
 import me.geraldr12.ui.items.*;
-import me.geraldr12.ui.items.*;
 import me.geraldr12.utils.Messages;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -21,7 +20,14 @@ import java.util.stream.Collectors;
 public class PortfolioGui extends AbstractPluginGui {
 
     public PortfolioGui(Player player, GuiManager guiManager, Messages messages) {
-        super(messages.getUiPortfolioTitle(), "blockstreet.ui.portfolio", player, guiManager, messages);
+        // Updated permission to 'stonks' branding
+        super(messages.getUiPortfolioTitle(), "stonks.ui.portfolio", player, guiManager, messages);
+    }
+
+    // FIX: Implement the required abstract method from AbstractPluginGui
+    @Override
+    public Gui getGui() {
+        return build();
     }
 
     @Override

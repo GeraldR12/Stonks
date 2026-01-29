@@ -23,7 +23,13 @@ import java.util.stream.Collectors;
 public class CompaniesGui extends AbstractPluginGui {
 
     public CompaniesGui(Player player, GuiManager guiManager, Messages messages) {
-        super(messages.getUiCompaniesTitle(), "blockstreet.ui.companies", player, guiManager, messages);
+        super(messages.getUiCompaniesTitle(), "stonks.ui.companies", player, guiManager, messages);
+    }
+
+    // FIX: Add this method to satisfy the abstract requirement in AbstractPluginGui
+    @Override
+    public Gui getGui() {
+        return build();
     }
 
     @Override

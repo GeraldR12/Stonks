@@ -7,8 +7,6 @@ import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.utils.FormattingUtils;
 import me.geraldr12.utils.Messages;
 import me.geraldr12.utils.VisualizationUtils;
-import dev.hugog.minecraft.dev_command.DevCommand;
-import dev.hugog.minecraft.dev_command.integration.Integration;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -35,11 +33,13 @@ public class CompanyItem extends AutoUpdateItem {
     }
 
     public static ItemProvider getItemProvider(CompanyDao company, Messages messages) {
+        if (company == null) return new ItemBuilder(Material.AIR);
+
         double marketCap = company.getCurrentSharePrice() * company.getTotalShares();
         double totalVariation = (company.getCurrentSharePrice() - company.getInitialSharePrice()) / company.getInitialSharePrice() * 100;
         double lastVariation = !company.getHistoric().isEmpty() ? company.getHistoric().peek().getVariation() * 100 : 0;
 
-        return new ItemBuilder(company.getIcon() != null ? company.getIcon() : Material.EMERALD)
+        ItemBuilder builder = new ItemBuilder(company.getIcon() != null ? company.getIcon() : Material.EMERALD)
                 .setDisplayName(ChatColor.GOLD + company.getName() + (!company.isBankrupt() ? MessageFormat.format(messages.getUiCompanyItemLastVariation(), VisualizationUtils.formatCompanyVariation(lastVariation)) : ""))
                 .setItemFlags(List.of(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_POTION_EFFECTS))
                 .addLoreLines(
@@ -54,27 +54,35 @@ public class CompanyItem extends AutoUpdateItem {
                         messages.getUiCompanyItemBuyTenShares(),
                         messages.getUiCompanyItemBuyHundredShares()
                 );
+
+        return builder;
     }
 
     @Override
     public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent inventoryClickEvent) {
+
+        // OWNER MANAGEMENT REDIRECT
+        if (clickType == ClickType.LEFT) {
+            String viewerUuid = player.getUniqueId().toString();
+            if (company.getOwnerUuid() != null && company.getOwnerUuid().equals(viewerUuid)) {
+                plugin.getGuiManager().openCompanyManagementMenu(player, (long) company.getId());
+                return;
+            }
+        }
+
+        // BUY LOGIC
         int sharesToBuy = -1;
         if (clickType == ClickType.RIGHT) {
-            sharesToBuy = 1; // Right click to buy one share
+            sharesToBuy = 1;
         } else if (clickType == ClickType.SHIFT_RIGHT) {
-            sharesToBuy = 10; // Shift + Right click to buy ten shares
+            sharesToBuy = 10;
         } else if (clickType == ClickType.SHIFT_LEFT) {
-            sharesToBuy = 100; // Shift + Left click to buy one hundred shares
+            sharesToBuy = 100;
         }
 
-        if (sharesToBuy <= 0) {
-            return; // No shares to buy
-        }
+        if (sharesToBuy <= 0) return;
 
-        DevCommand devCommand = DevCommand.getOrCreateInstance();
-        // Execute the command to buy the shares
-        devCommand.getCommandHandler().executeCommand(Integration.createFromPlugin(plugin), player, BuyCommand.class,
-                String.valueOf(company.getId()), String.valueOf(sharesToBuy));
+        BuyCommand buyLogic = new BuyCommand(plugin);
+        buyLogic.onCommand(player, new String[]{String.valueOf(company.getId()), String.valueOf(sharesToBuy)});
     }
-
 }

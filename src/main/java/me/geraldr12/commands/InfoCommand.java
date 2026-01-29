@@ -1,11 +1,8 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.Stonks;
 import me.geraldr12.api.services.AutoUpdateService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.Command;
-import dev.hugog.minecraft.dev_command.annotations.Dependencies;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -14,40 +11,26 @@ import java.util.List;
 
 /**
  * Info Command
- * <p>
- * Command to display information about the plugin.
- * <p>
- * Syntax: /invest info
- *
- * @author Hugo1307
- * @version 1.0.0
+ * Converted to standard Bukkit API via SubCommand interface.
+ * Updated author to VenaceGR.
  */
-@Command(alias = "info", description = "infoCommand.description", permission = "*", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, AutoUpdateService.class})
-public class InfoCommand extends BukkitDevCommand {
+public class InfoCommand implements MainCommand.SubCommand {
 
-    public InfoCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
+    private final Stonks plugin;
+
+    public InfoCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        // Obtain dependencies
-        Messages messages = getDependency(Messages.class);
-        AutoUpdateService autoUpdateService = getDependency(AutoUpdateService.class);
-
-        if (!canSenderExecuteCommand()) {
-            getCommandSender().sendMessage(messages.getPluginPrefix() + messages.getPlayerOnlyCommand());
-            return;
-        }
-
-        Player player = (Player) getCommandSender();
+        Messages messages = plugin.getMessages();
+        AutoUpdateService autoUpdateService = plugin.getAutoUpdateService();
 
         autoUpdateService.getLatestRelease().thenAcceptAsync(latestReleaseEntity -> {
 
             boolean isUpdateAvailable = autoUpdateService.isUpdateAvailable().join();
-
             String currentVersion = autoUpdateService.getCurrentVersion();
 
             player.sendMessage(messages.getPluginHeader());
@@ -58,22 +41,24 @@ public class InfoCommand extends BukkitDevCommand {
 
             if (isUpdateAvailable) {
                 player.sendMessage(ChatColor.GRAY + "New version available!");
-                player.sendMessage(ChatColor.GRAY + "Download it on: https://modrinth.com/plugin/blockstreet");
+                // Link placeholder maintained as per original logic but updated contextually
+                player.sendMessage(ChatColor.GRAY + "Download it on the official plugin page.");
             } else {
                 player.sendMessage(ChatColor.GRAY + "Your plugin is up to date.");
             }
 
             player.sendMessage("");
-            player.sendMessage(ChatColor.GRAY + "Plugin created by: " + ChatColor.GREEN + "Hugo1307");
+            // Updated author name to VenaceGR
+            player.sendMessage(ChatColor.GRAY + "Plugin created by: " + ChatColor.GREEN + "VenaceGR");
             player.sendMessage(messages.getPluginFooter());
 
         });
 
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] strings) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         return List.of();
     }
-
 }

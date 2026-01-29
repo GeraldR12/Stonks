@@ -8,8 +8,7 @@ import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.utils.FormattingUtils;
 import me.geraldr12.utils.Messages;
 import me.geraldr12.utils.VisualizationUtils;
-import dev.hugog.minecraft.dev_command.DevCommand;
-import dev.hugog.minecraft.dev_command.integration.Integration;
+// REMOVE dev-command imports
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -69,14 +68,14 @@ public class InvestmentItem extends AutoUpdateItem {
         }
 
         if (sharesToSell <= 0) {
-            return; // No shares to sell
+            return;
         }
 
-        DevCommand devCommand = DevCommand.getOrCreateInstance();
-        // Execute the command to sell shares
-        devCommand.getCommandHandler().executeCommand(Integration.createFromPlugin(plugin), player, SellCommand.class,
-                String.valueOf(investment.getCompanyId()), String.valueOf(sharesToSell));
+        // DIRECT EXECUTION: Call the converted SellCommand directly
+        SellCommand sellLogic = new SellCommand(plugin);
+        sellLogic.onCommand(player, new String[]{String.valueOf(investment.getCompanyId()), String.valueOf(sharesToSell)});
 
+        // Local state update for the GUI
         if (investment.getSharesAmount() - sharesToSell >= 0) {
             investment.setSharesAmount(investment.getSharesAmount() - sharesToSell);
         }

@@ -1,78 +1,79 @@
 package me.geraldr12.commands;
 
-import me.geraldr12.commands.validators.CompanyRiskArgumentParser;
-import me.geraldr12.commands.validators.MaterialArgumentParser;
-import me.geraldr12.commands.validators.PositiveIntegerArgumentParser;
-import me.geraldr12.commands.validators.SharePriceArgumentParser;
+import me.geraldr12.Stonks;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.*;
-import dev.hugog.minecraft.dev_command.arguments.parsers.StringArgumentParser;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
-
+import org.bukkit.entity.Player;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/**
- * Admin Create Company Command
- *
- * <p>Command that allow server administrators to create a new public-domain company.
- * <p>Syntax: /invest admin create [name] [risk] [shares_amount] [share_price] [icon]
- *
- * @author Hugo1307
- * @since v1.0.0
- */
-@AutoValidation
-@Command(alias = "admin create", description = "adminCreateCommand.description", permission = "blockstreet.admin.command.create")
-@Dependencies(dependencies = {Messages.class, CompaniesService.class})
-@Arguments({
-        @Argument(name = "name", description = "adminCreateCommand.nameArg", position = 0, parser = StringArgumentParser.class),
-        @Argument(name = "risk", description = "adminCreateCommand.riskArg", position = 1, parser = CompanyRiskArgumentParser.class),
-        @Argument(name = "shares", description = "adminCreateCommand.sharesArg", position = 2, parser = PositiveIntegerArgumentParser.class),
-        @Argument(name = "price", description = "adminCreateCommand.priceArg", position = 3, parser = SharePriceArgumentParser.class),
-        @Argument(name = "icon", description = "adminCreateCommand.iconArg", position = 4, parser = MaterialArgumentParser.class, optional = true)
-})
-public class AdminCreateCommand extends BukkitDevCommand {
+public class AdminCreateCommand implements MainCommand.SubCommand {
 
-    public AdminCreateCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
+    private final Stonks plugin;
+
+    public AdminCreateCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
+        Messages messages = plugin.getMessages();
+        CompaniesService companiesService = plugin.getCompaniesService();
 
-        Messages messages = getDependency(Messages.class);
-        CompaniesService companiesService = getDependency(CompaniesService.class);
+        // Check Permissions - Use 'player' here
+        if (!player.hasPermission("blockstreet.admin.command.create")) {
+            player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
 
-        String companyName = getArgs()[0];
-        int companyRisk = Integer.parseInt(getArgs()[1]);
-        int companySharesAmount = Integer.parseInt(getArgs()[2]);
-        double companySharePrice = Double.parseDouble(getArgs()[3]);
-        Material companyIcon = getOptionalArgumentParser(4)
-                .flatMap(parser -> ((MaterialArgumentParser) parser).parse()).orElse(null);
+        if (args.length < 4) {
+            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest admin create <name> <risk> <shares> <price> [icon]");
+            return true;
+        }
 
-        companiesService.createAdminCompany(companyName, companyRisk, companySharesAmount, companySharePrice, companyIcon);
-        getCommandSender().sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
+        try {
+            String companyName = args[0];
+            int companyRisk = Integer.parseInt(args[1]);
+            int companySharesAmount = Integer.parseInt(args[2]);
+            double companySharePrice = Double.parseDouble(args[3]);
 
+            Material companyIcon = null;
+            if (args.length >= 5) {
+                companyIcon = Material.matchMaterial(args[4].toUpperCase());
+            }
+
+            companiesService.createAdminCompany(companyName, companyRisk, companySharesAmount, companySharePrice, companyIcon);
+            // Use 'player' here
+            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(messages.getPluginPrefix() + "Error: Risk, shares, and price must be numbers.");
+        }
+
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] args) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
+        // Tab completion uses 'sender' because that's how it's defined in the interface
         if (args.length == 2) {
-            return IntStream.range(1, 6).mapToObj(String::valueOf).collect(Collectors.toList());
-        } else if (args.length == 5) {
+            return IntStream.range(1, 6).mapToObj(String::valueOf)
+                    .filter(s -> s.startsWith(args[1]))
+                    .collect(Collectors.toList());
+        }
+
+        if (args.length == 5) {
             return Arrays.stream(Material.values())
-                    .map(Material::toString)
+                    .map(Enum::name)
                     .filter(name -> name.toLowerCase().startsWith(args[4].toLowerCase()))
                     .collect(Collectors.toList());
         }
+
         return List.of();
     }
-
 }

@@ -1,5 +1,6 @@
 package me.geraldr12.data.services;
 
+import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.dao.InvestmentDao;
 import me.geraldr12.data.dao.PlayerDao;
@@ -9,15 +10,18 @@ import me.geraldr12.enums.NotificationType;
 import org.bukkit.Bukkit;
 
 import javax.inject.Inject;
+import java.io.File;
 import java.util.*;
 
 public class PlayersService implements Service {
 
     private final PlayersRepository playersRepository;
+    private final Stonks plugin;
 
     @Inject
-    public PlayersService(PlayersRepository playersRepository) {
+    public PlayersService(PlayersRepository playersRepository, Stonks plugin) {
         this.playersRepository = playersRepository;
+        this.plugin = plugin;
     }
 
     public void addSharesToPlayer(UUID playerId, CompanyDao company, int sharesAmount) {
@@ -91,7 +95,8 @@ public class PlayersService implements Service {
     public Optional<InvestmentDao> getInvestmentInCompany(UUID playerId, long companyId) {
         PlayerDao playerDao = getOrCreatePlayer(playerId);
         return playerDao.getInvestments().stream()
-                .filter(investment -> investment.getCompanyId() == companyId)
+                // Ensure both sides are compared as long to avoid precision/type mismatches
+                .filter(investment -> (long) investment.getCompanyId() == companyId)
                 .findFirst();
     }
 
@@ -181,6 +186,24 @@ public class PlayersService implements Service {
                     .blockedNotifications(new HashSet<>())
                     .build();
         }
+    }
+
+    public Map<UUID, Integer> getShareholdersForCompany(long companyId) {
+        Map<UUID, Integer> shareholders = new HashMap<>();
+
+        // This is expensive but necessary: scan all player files
+        // Note: In a large server, you'd want to cache this!
+        for (File file : new File(plugin.getDataFolder(), "players").listFiles()) {
+            if (!file.getName().endsWith(".yml")) continue;
+            UUID uuid = UUID.fromString(file.getName().replace(".yml", ""));
+
+            getInvestmentInCompany(uuid, companyId).ifPresent(inv -> {
+                if (inv.getSharesAmount() > 0) {
+                    shareholders.put(uuid, inv.getSharesAmount());
+                }
+            });
+        }
+        return shareholders;
     }
 
     @Override

@@ -5,8 +5,7 @@ import me.geraldr12.commands.ToggleNotificationCommand;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.enums.NotificationType;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.DevCommand;
-import dev.hugog.minecraft.dev_command.integration.Integration;
+// REMOVE dev-command imports
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -49,11 +48,12 @@ public class NotificationToggleItem extends AbstractItem {
 
     @Override
     public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent inventoryClickEvent) {
-        // Execute the command to toggle the notification
-        DevCommand devCommand = DevCommand.getOrCreateInstance();
-        devCommand.getCommandHandler().executeCommand(Integration.createFromPlugin(plugin), player, ToggleNotificationCommand.class, String.valueOf(notificationType));
 
-        // Update the item to reflect the new state
+        // DIRECT EXECUTION: Call the converted ToggleNotificationCommand directly
+        ToggleNotificationCommand toggleLogic = new ToggleNotificationCommand(plugin);
+        toggleLogic.onCommand(player, new String[]{notificationType.name()});
+
+        // Update the item to reflect the new state in the GUI
         notifyWindows();
     }
 }

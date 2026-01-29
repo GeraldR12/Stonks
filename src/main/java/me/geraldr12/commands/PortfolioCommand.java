@@ -1,14 +1,10 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.AutoValidation;
-import dev.hugog.minecraft.dev_command.annotations.Command;
-import dev.hugog.minecraft.dev_command.annotations.Dependencies;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.HoverEvent;
@@ -22,33 +18,32 @@ import java.util.List;
 
 /**
  * Portfolio Command
- *
- * <p>Command that allows players to check their investments and shares.
- * <p>Syntax: /invest portfolio
- *
- * @author Hugo1307
- * @since v1.0.0
+ * Converted to standard Bukkit API via SubCommand interface.
  */
-@AutoValidation
-@Command(alias = "portfolio", description = "portfolioCommand.description", permission = "blockstreet.command.portfolio", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, PlayersService.class, CompaniesService.class})
-public class PortfolioCommand extends BukkitDevCommand {
+public class PortfolioCommand implements MainCommand.SubCommand {
 
-    public PortfolioCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
+    private final Stonks plugin;
+
+    public PortfolioCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        Messages messages = getDependency(Messages.class);
-        PlayersService playersService = getDependency(PlayersService.class);
-        CompaniesService companiesService = getDependency(CompaniesService.class);
-        Player player = (Player) getCommandSender();
+        Messages messages = plugin.getMessages();
+        PlayersService playersService = plugin.getPlayersService();
+        CompaniesService companiesService = plugin.getCompaniesService();
+
+        // Check permission manually
+        if (!player.hasPermission("blockstreet.command.portfolio")) {
+            player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
 
         if (!playersService.hasAnyInvestments(player.getUniqueId())) {
             player.sendMessage(messages.getPluginPrefix() + messages.getPlayerAnyActions());
-            return;
+            return true;
         }
 
         player.sendMessage(messages.getPluginHeader());
@@ -75,12 +70,11 @@ public class PortfolioCommand extends BukkitDevCommand {
 
                 });
         player.sendMessage(messages.getPluginFooter());
-
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] strings) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         return List.of();
     }
-
 }

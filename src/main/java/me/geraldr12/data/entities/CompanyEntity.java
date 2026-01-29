@@ -18,5 +18,6 @@ public class CompanyEntity implements DataEntity {
     private int totalShares;
     private int availableShares;
     private List<QuoteEntity> historic;
+    private String ownerUuid; // The UUID of the player who owns this company
 
 }

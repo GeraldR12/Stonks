@@ -2,125 +2,79 @@ package me.geraldr12.commands;
 
 import me.geraldr12.Stonks;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.DevCommand;
-import dev.hugog.minecraft.dev_command.annotations.AutoValidation;
-import dev.hugog.minecraft.dev_command.annotations.Command;
-import dev.hugog.minecraft.dev_command.annotations.Dependencies;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.AbstractCommandData;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
-import dev.hugog.minecraft.dev_command.integration.Integration;
-import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.chat.hover.content.Text;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Help Command
- *
- * <p>Command to provide information about the available commands.
- * <p>Syntax: /invest help
- *
- * @author Hugo1307
- * @since v1.0.0
+ * Standard Bukkit conversion.
  */
-@AutoValidation
-@Command(alias = "help", description = "helpCommand.description", permission = "blockstreet.command.help")
-@Dependencies(dependencies = {Stonks.class, Messages.class})
-public class HelpCommand extends BukkitDevCommand {
+public class HelpCommand implements MainCommand.SubCommand {
 
     private final Stonks plugin;
-    private final Messages messages;
 
-    public HelpCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
-        this.plugin = getDependency(Stonks.class);
-        this.messages = getDependency(Messages.class);
+    public HelpCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        List<Class<? extends BukkitDevCommand>> commandsCustomOrder = List.of(MainCommand.class, BuyCommand.class, SellCommand.class,
-                PortfolioCommand.class, CompaniesCommand.class, CompanyCommand.class, CreateCommand.class,
-                DeleteCommand.class, InfoCommand.class, HelpCommand.class, AdminCreateCommand.class,
-                AdminDeleteCommand.class, ReloadCommand.class);
+        Messages messages = plugin.getMessages();
 
-        List<AbstractCommandData> allCommands = DevCommand.getOrCreateInstance().getCommandHandler().getRegisteredCommands(Integration.createFromPlugin(plugin)).stream()
-                .map(BukkitCommandData.class::cast)
-                .filter(commandData -> getCommandSender().hasPermission(commandData.getPermission()))
-                .sorted(Comparator.comparingInt(cmd -> commandsCustomOrder.indexOf(cmd.getExecutor())))
-                .collect(Collectors.toUnmodifiableList());
+        player.sendMessage(messages.getPluginHeader());
+        player.sendMessage("");
 
-        getCommandSender().sendMessage(messages.getPluginHeader());
-        getCommandSender().sendMessage("");
+        // Manually define the help entries since the framework registry is gone
+        sendHelpLine(player, "buy", "<id> <amount>", "buyCommand.description");
+        sendHelpLine(player, "sell", "<id> <amount>", "sellCommand.description");
+        sendHelpLine(player, "portfolio", "", "portfolioCommand.description");
+        sendHelpLine(player, "companies", "", "companiesCommand.description");
+        sendHelpLine(player, "company info", "<id>", "companyCommand.description");
 
-        allCommands.forEach(commandData -> {
-            String commandText = String.format("/%s %s %s", "invest", commandData.getAlias(), getCommandArgumentsString((BukkitCommandData) commandData));
-            TextComponent commandComponent = new TextComponent(String.format("  • /%s %s", "invest", commandData.getAlias()));
-            commandComponent.addExtra(getCommandArgumentsComponent((BukkitCommandData) commandData));
-            commandComponent.setColor(net.md_5.bungee.api.ChatColor.GREEN);
-            commandComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, commandText));
-            commandComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("Click to suggest command")));
-            getCommandSender().spigot().sendMessage(commandComponent);
-            getCommandSender().sendMessage(ChatColor.GREEN + "      ╰ " + ChatColor.GRAY + messages.getMessageByKey(commandData.getDescription()));
-            getCommandSender().sendMessage("");
-        });
-
-        getCommandSender().sendMessage(messages.getPluginFooter());
-
-    }
-
-    private String getCommandArgumentsString(BukkitCommandData commandData) {
-
-        StringBuilder commandArgumentsBuilder = new StringBuilder();
-        if (commandData.getArguments() == null) {
-            return commandArgumentsBuilder.toString();
+        if (player.hasPermission("blockstreet.admin.command.create")) {
+            sendHelpLine(player, "admin create", "<name> <risk> <shares> <price> [icon]", "adminCreateCommand.description");
         }
 
-        Arrays.stream(commandData.getArguments()).forEach(commandArgument -> {
-            if (commandArgument.optional()) {
-                commandArgumentsBuilder.append(String.format("[%s] ", commandArgument.name()));
-            } else {
-                commandArgumentsBuilder.append(String.format("<%s> ", commandArgument.name()));
-            }
-        });
-        return commandArgumentsBuilder.toString();
-
-    }
-
-    private BaseComponent getCommandArgumentsComponent(BukkitCommandData commandData) {
-
-        BaseComponent commandArgumentsBuilder = new TextComponent();
-        if (commandData.getArguments() == null) {
-            return commandArgumentsBuilder;
+        if (player.hasPermission("blockstreet.admin.command.delete")) {
+            sendHelpLine(player, "admin delete", "<id>", "adminDeleteCommand.description");
         }
 
-        Arrays.stream(commandData.getArguments()).forEach(commandArgument -> {
-            TextComponent argumentComponent;
-            if (commandArgument.optional()) {
-                argumentComponent = new TextComponent(" [" + commandArgument.name() + "]");
-            } else {
-                argumentComponent = new TextComponent(" <" + commandArgument.name() + ">");
-            }
-            argumentComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(messages.getMessageByKey(commandArgument.description()))));
-            commandArgumentsBuilder.addExtra(argumentComponent);
-        });
-        return commandArgumentsBuilder;
+        player.sendMessage("");
+        player.sendMessage(messages.getPluginFooter());
 
+        return true;
+    }
+
+    private void sendHelpLine(Player player, String cmdAlias, String args, String descKey) {
+        Messages messages = plugin.getMessages();
+        String fullCmd = "/invest " + cmdAlias + " " + args;
+
+        TextComponent line = new TextComponent("  • /invest " + cmdAlias);
+        line.setColor(net.md_5.bungee.api.ChatColor.GREEN);
+
+        if (!args.isEmpty()) {
+            TextComponent argsComp = new TextComponent(" " + args);
+            argsComp.setColor(net.md_5.bungee.api.ChatColor.WHITE);
+            line.addExtra(argsComp);
+        }
+
+        line.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, fullCmd));
+        line.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("Click to suggest command")));
+
+        player.spigot().sendMessage(line);
+        player.sendMessage(ChatColor.GREEN + "      ╰ " + ChatColor.GRAY + messages.getMessageByKey(descKey));
     }
 
     @Override
-    public List<String> onTabComplete(String[] strings) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         return List.of();
     }
-
 }

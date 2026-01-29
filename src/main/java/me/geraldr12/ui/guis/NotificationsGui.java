@@ -23,7 +23,14 @@ import java.util.stream.Collectors;
 
 public class NotificationsGui extends AbstractPluginGui {
     public NotificationsGui(Player player, GuiManager guiManager, Messages messages) {
-        super(messages.getUiNotificationsTitle(), "blockstreet.ui.notifications", player, guiManager, messages);
+        // Updated permission to 'stonks' branding
+        super(messages.getUiNotificationsTitle(), "stonks.ui.notifications", player, guiManager, messages);
+    }
+
+    // FIX: Implement the required abstract method from AbstractPluginGui
+    @Override
+    public Gui getGui() {
+        return build();
     }
 
     @Override
@@ -44,7 +51,7 @@ public class NotificationsGui extends AbstractPluginGui {
                         "# x x x x x x x #",
                         "# x x x x x x x #",
                         "# # # < - > # # #")
-                .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL) // where paged items should be put
+                .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL)
                 .addIngredient('#', new SimpleItem(new ItemBuilder(Material.GRAY_STAINED_GLASS_PANE).setDisplayName("")))
                 .addIngredient('-', new NavigateBackItem(guiManager, messages))
                 .addIngredient('<', new PreviousPageItem(messages))

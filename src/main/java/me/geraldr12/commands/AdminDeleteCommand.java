@@ -1,14 +1,12 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.*;
-import dev.hugog.minecraft.dev_command.arguments.parsers.IntegerArgumentParser;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 import java.text.MessageFormat;
 import java.util.List;
@@ -16,53 +14,64 @@ import java.util.stream.Collectors;
 
 /**
  * Admin Delete Company Command
- *
- * <p>Command that allow players to delete a company.
- * <p>Syntax: /invest delete [ID]
- *
- * @author Hugo1307
- * @since v1.0.0
+ * Converted to standard Bukkit API.
  */
-@AutoValidation
-@Command(alias = "admin delete", description = "adminDeleteCommand.description", permission = "blockstreet.admin.command.delete")
-@Dependencies(dependencies = {Messages.class, CompaniesService.class})
-@Arguments({
-        @Argument(name = "companyId", description = "adminDeleteCommand.companyIdArg", position = 0, parser = IntegerArgumentParser.class)
-})
-public class AdminDeleteCommand extends BukkitDevCommand {
+public class AdminDeleteCommand implements MainCommand.SubCommand {
 
-    private final CompaniesService companiesService;
-    private final PlayersService playersService;
+    private final Stonks plugin;
 
-    public AdminDeleteCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
-        this.companiesService = getDependency(CompaniesService.class);
-        this.playersService = getDependency(PlayersService.class);
+    public AdminDeleteCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
-        Messages messages = getDependency(Messages.class);
-        long companyId = Long.parseLong(getArgs()[0]);
+    public boolean onCommand(Player player, String[] args) {
 
-        if (!companiesService.companyExists(companyId)) {
-            getCommandSender().sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
-            return;
+        Messages messages = plugin.getMessages();
+        CompaniesService companiesService = plugin.getCompaniesService();
+        PlayersService playersService = plugin.getPlayersService();
+
+        // Check Permissions manually
+        if (!player.hasPermission("blockstreet.admin.command.delete")) {
+            player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
         }
 
-        CompanyDao companyToDelete = companiesService.getCompanyById(companyId);
-        companiesService.deleteCompany(companyId);
-        playersService.cleanUpInvestmentsForOnlinePlayers(companiesService.getAllCompanies());
+        // Validate argument length
+        if (args.length < 1) {
+            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest admin delete <ID>");
+            return true;
+        }
 
-        getCommandSender().sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getDeletedCompany(), companyToDelete.getName()));
+        try {
+            long companyId = Long.parseLong(args[0]);
+
+            if (!companiesService.companyExists(companyId)) {
+                player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
+                return true;
+            }
+
+            CompanyDao companyToDelete = companiesService.getCompanyById(companyId);
+            companiesService.deleteCompany(companyId);
+            playersService.cleanUpInvestmentsForOnlinePlayers(companiesService.getAllCompanies());
+
+            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getDeletedCompany(), companyToDelete.getName()));
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(messages.getPluginPrefix() + "Error: Company ID must be a number.");
+        }
+
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] args) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
+        // Tab complete company IDs for deletion
         if (args.length == 1) {
-            return companiesService.getAllCompanies().stream()
+            return plugin.getCompaniesService().getAllCompanies().stream()
                     .map(CompanyDao::getId)
                     .map(String::valueOf)
+                    .filter(id -> id.startsWith(args[0]))
                     .collect(Collectors.toList());
         }
         return List.of();

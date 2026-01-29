@@ -1,17 +1,10 @@
 package me.geraldr12.commands;
 
-import me.geraldr12.commands.validators.CompanyRiskArgumentParser;
-import me.geraldr12.commands.validators.MaterialArgumentParser;
-import me.geraldr12.commands.validators.PositiveIntegerArgumentParser;
-import me.geraldr12.commands.validators.SharePriceArgumentParser;
+import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.*;
-import dev.hugog.minecraft.dev_command.arguments.parsers.StringArgumentParser;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
@@ -23,72 +16,62 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/**
- * Create Company Command
- *
- * <p>Command that allow players to create their own companies.
- * <p>Syntax: /invest company create [name] [risk] [shares_amount] [share_price] [icon]
- *
- * @author Hugo1307
- * @since v1.0.0
- */
-@AutoValidation
-@Command(alias = "company create", description = "createCommand.description", permission = "blockstreet.command.create", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, CompaniesService.class})
-@Arguments({
-        @Argument(name = "name", description = "createCommand.nameArg", position = 0, parser = StringArgumentParser.class),
-        @Argument(name = "risk", description = "createCommand.riskArg", position = 1, parser = CompanyRiskArgumentParser.class),
-        @Argument(name = "shares", description = "createCommand.sharesArg", position = 2, parser = PositiveIntegerArgumentParser.class),
-        @Argument(name = "price", description = "createCommand.priceArg", position = 3, parser = SharePriceArgumentParser.class),
-        @Argument(name = "icon", description = "createCommand.iconArg", position = 4, parser = MaterialArgumentParser.class, optional = true)
-})
-public class CreateCommand extends BukkitDevCommand {
+public class CreateCommand implements MainCommand.SubCommand {
 
-    public CreateCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
+    private final Stonks plugin;
+
+    public CreateCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
+    public boolean onCommand(Player player, String[] args) {
 
-        Messages messages = getDependency(Messages.class);
-        CompaniesService companiesService = getDependency(CompaniesService.class);
-        PlayersService playersService = getDependency(PlayersService.class);
-        Economy vaultEconomy = getDependency(Economy.class);
-        Player player = (Player) getCommandSender();
+        Messages messages = plugin.getMessages();
+        CompaniesService companiesService = plugin.getCompaniesService();
+        PlayersService playersService = plugin.getPlayersService();
+        Economy vaultEconomy = plugin.getEconomy();
 
-        String companyName = getArgs()[0];
-        int companyRisk = Integer.parseInt(getArgs()[1]);
-        int companySharesAmount = Integer.parseInt(getArgs()[2]);
-        double companySharePrice = Double.parseDouble(getArgs()[3]);
-        Material companyIcon = getOptionalArgumentParser(4)
-                .flatMap(parser -> ((MaterialArgumentParser) parser).parse()).orElse(null);
-
-        double companyCreationTax = companiesService.getCompanyCreationTax(companySharesAmount, companySharePrice, companyRisk);
-        if (!vaultEconomy.has(player, companyCreationTax)) {
-            getCommandSender().sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getInsufficientMoney(), companyCreationTax));
-            return;
+        if (args.length < 4) {
+            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest company create [name] [risk] [shares] [price] [icon]");
+            return true;
         }
 
-        // Withdraw the company creation tax from the player
-        vaultEconomy.withdrawPlayer(player, companyCreationTax);
+        try {
+            String companyName = args[0];
+            int companyRisk = Integer.parseInt(args[1]);
+            int companySharesAmount = Integer.parseInt(args[2]);
+            double companySharePrice = Double.parseDouble(args[3]);
+            Material companyIcon = args.length >= 5 ? Material.matchMaterial(args[4].toUpperCase()) : null;
 
-        // Create the company and move the shares to the player
-        CompanyDao createdCompany = companiesService.createPlayerCompany(companyName, companyRisk, companySharesAmount, companySharePrice, companyIcon);
-        companiesService.removeSharesFromCompany(createdCompany.getId(), companySharesAmount);
-        playersService.addSharesToPlayer(player.getUniqueId(), createdCompany, companySharesAmount);
+            double companyCreationTax = companiesService.getCompanyCreationTax(companySharesAmount, companySharePrice, companyRisk);
+            if (!vaultEconomy.has(player, companyCreationTax)) {
+                player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getInsufficientMoney(), companyCreationTax));
+                return true;
+            }
 
-        getCommandSender().sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
+            vaultEconomy.withdrawPlayer(player, companyCreationTax);
 
+            CompanyDao createdCompany = companiesService.createPlayerCompany(companyName, companyRisk, companySharesAmount, companySharePrice, companyIcon, player.getUniqueId().toString());
+            companiesService.removeSharesFromCompany(createdCompany.getId(), companySharesAmount);
+            playersService.addSharesToPlayer(player.getUniqueId(), createdCompany, companySharesAmount);
+
+            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(messages.getPluginPrefix() + "Invalid numbers provided for risk, shares, or price.");
+        }
+
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] args) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 2) {
             return IntStream.range(1, 6).mapToObj(String::valueOf).collect(Collectors.toList());
         } else if (args.length == 5) {
             return Arrays.stream(Material.values())
-                    .map(Material::toString)
+                    .map(Enum::name)
                     .filter(name -> name.toLowerCase().startsWith(args[4].toLowerCase()))
                     .collect(Collectors.toList());
         }

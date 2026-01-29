@@ -1,14 +1,9 @@
 package me.geraldr12.commands;
 
-import me.geraldr12.commands.validators.NotificationTypeArgumentParser;
-import me.geraldr12.data.services.CompaniesService;
+import me.geraldr12.Stonks;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.enums.NotificationType;
 import me.geraldr12.utils.Messages;
-import dev.hugog.minecraft.dev_command.annotations.*;
-import dev.hugog.minecraft.dev_command.commands.BukkitDevCommand;
-import dev.hugog.minecraft.dev_command.commands.data.BukkitCommandData;
-import net.milkbowl.vault.economy.Economy;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -19,44 +14,61 @@ import java.util.stream.Collectors;
 
 /**
  * Toggle Notifications Command
- *
- * <p>Command that allow players to toggle their notifications on/off for a certain notification type.
- * <p>Syntax: /invest notifications [notificationType]
- *
- * @author Hugo1307
- * @since v2.8.0
+ * Converted to standard Bukkit API via SubCommand interface.
  */
-@AutoValidation
-@Command(alias = "notification", description = "toggleNotificationsCommand.description", permission = "blockstreet.command.notification", isPlayerOnly = true)
-@Dependencies(dependencies = {Messages.class, PlayersService.class, CompaniesService.class, Economy.class})
-@Arguments({
-        @Argument(name = "notificationType", description = "toggleNotificationsCommand.notificationTypeArg", position = 0, parser = NotificationTypeArgumentParser.class),
-})
-public class ToggleNotificationCommand extends BukkitDevCommand {
+public class ToggleNotificationCommand implements MainCommand.SubCommand {
 
-    private final Messages messages;
-    private final PlayersService playersService;
+    private final Stonks plugin;
 
-    public ToggleNotificationCommand(BukkitCommandData commandData, CommandSender commandSender, String[] args) {
-        super(commandData, commandSender, args);
-        this.messages = getDependency(Messages.class);
-        this.playersService = getDependency(PlayersService.class);
+    public ToggleNotificationCommand(Stonks plugin) {
+        this.plugin = plugin;
     }
 
     @Override
-    public void execute() {
-        Player player = (Player) getCommandSender();
-        NotificationType notificationType = ((NotificationTypeArgumentParser) getArgumentParser(0)).parse().orElseThrow();
+    public boolean onCommand(Player player, String[] args) {
 
-        playersService.toggleNotification(player.getUniqueId(), notificationType);
+        Messages messages = plugin.getMessages();
+        PlayersService playersService = plugin.getPlayersService();
 
-        String status = playersService.hasNotificationEnabled(player.getUniqueId(), notificationType) ? messages.getEnabledString() : messages.getDisabledString();
-        String notificationName = messages.getMessageByKey(notificationType.getMessageKey());
-        player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getNotificationToggled(), status, notificationName));
+        // Check permission manually
+        if (!player.hasPermission("blockstreet.command.notification")) {
+            player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
+
+        // Validate argument length: /invest notification <type>
+        if (args.length < 1) {
+            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest notification <type>");
+            return true;
+        }
+
+        try {
+            // Replaces the custom NotificationTypeArgumentParser
+            NotificationType notificationType = NotificationType.valueOf(args[0].toUpperCase());
+
+            playersService.toggleNotification(player.getUniqueId(), notificationType);
+
+            String status = playersService.hasNotificationEnabled(player.getUniqueId(), notificationType)
+                    ? messages.getEnabledString()
+                    : messages.getDisabledString();
+
+            String notificationName = messages.getMessageByKey(notificationType.getMessageKey());
+
+            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
+                    messages.getNotificationToggled(),
+                    status,
+                    notificationName
+            ));
+
+        } catch (IllegalArgumentException e) {
+            player.sendMessage(messages.getPluginPrefix() + "Error: Invalid notification type.");
+        }
+
+        return true;
     }
 
     @Override
-    public List<String> onTabComplete(String[] args) {
+    public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
             return Arrays.stream(NotificationType.values())
                     .map(Enum::name)
