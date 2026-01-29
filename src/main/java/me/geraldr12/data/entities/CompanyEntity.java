@@ -19,5 +19,14 @@ public class CompanyEntity implements DataEntity {
     private int availableShares;
     private List<QuoteEntity> historic;
     private String ownerUuid; // The UUID of the player who owns this company
+    private boolean bankrupt;
+
+    public boolean isBankrupt() {
+        return bankrupt;
+    }
+
+    public void setBankrupt(boolean bankrupt) {
+        this.bankrupt = bankrupt;
+    }
 
 }

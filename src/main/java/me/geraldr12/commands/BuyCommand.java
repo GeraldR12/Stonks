@@ -6,6 +6,7 @@ import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
 import net.milkbowl.vault.economy.Economy;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -13,25 +14,21 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.stream.Collectors;
 
-// Change 'extends BukkitDevCommand' to 'implements MainCommand.SubCommand'
 public class BuyCommand implements MainCommand.SubCommand {
 
     private final Stonks plugin;
 
-    // Use a standard constructor instead of the framework one
     public BuyCommand(Stonks plugin) {
         this.plugin = plugin;
     }
 
     @Override
     public boolean onCommand(Player player, String[] args) {
-
         Messages messages = plugin.getMessages();
         Economy vaultEconomy = plugin.getEconomy();
         CompaniesService companiesService = plugin.getCompaniesService();
         PlayersService playersService = plugin.getPlayersService();
 
-        // Validate basic argument length: [id] [amount]
         if (args.length < 2) {
             player.sendMessage(messages.getPluginPrefix() + "Usage: /invest buy <id> <amount>");
             return true;
@@ -57,7 +54,6 @@ public class BuyCommand implements MainCommand.SubCommand {
                 return true;
             }
 
-            // Logic check for share limits
             int sharesLimit = plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer");
             long playerSharesCount = playersService.getTotalPlayerSharesCount(player.getUniqueId());
             if (sharesLimit > 0 && (playerSharesCount + numberOfSharesToBuy) > sharesLimit) {
@@ -71,10 +67,15 @@ public class BuyCommand implements MainCommand.SubCommand {
                 return true;
             }
 
-            // Transaction
+            // --- TRANSACTION LOGIC (Synchronous) ---
             vaultEconomy.withdrawPlayer(player, investmentPrice);
             companiesService.removeSharesFromCompany(companyId, numberOfSharesToBuy);
             playersService.addSharesToPlayer(player.getUniqueId(), company, numberOfSharesToBuy);
+
+            // --- MARKET IMPACT (Asynchronous to prevent Event Thread Error) ---
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                companiesService.applyMarketImpact(player.getUniqueId(), companyId, numberOfSharesToBuy, true);
+            });
 
             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getBoughtActions(), numberOfSharesToBuy));
 

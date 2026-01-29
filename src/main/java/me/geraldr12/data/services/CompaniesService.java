@@ -15,6 +15,7 @@ import org.bukkit.Material;
 import javax.inject.Inject;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class CompaniesService implements Service {
@@ -230,6 +231,47 @@ public class CompaniesService implements Service {
         companyDao.getHistoric().push(newQuote);
         companiesRepository.save(companyDao.toEntity());
 
+    }
+
+    public void applyMarketImpact(UUID playerUuid, long companyId, int shares, boolean isPurchase) {
+        CompanyDao company = getCompanyById(companyId);
+        if (company == null || company.isBankrupt()) return;
+
+        double currentPrice = company.getCurrentSharePrice();
+        double sensitivity = plugin.getConfig().getDouble("Stonks.MarketSensitivity", 0.001);
+
+        // 1. Calculate Impact (Square root for diminishing returns)
+        double impactPercentage = Math.sqrt(shares) * sensitivity;
+
+        double newPrice;
+        if (isPurchase) {
+            newPrice = currentPrice * (1 + impactPercentage);
+        } else {
+            newPrice = currentPrice * (1 - impactPercentage);
+        }
+
+        newPrice = Math.max(0.01, newPrice);
+        double variation = (newPrice - currentPrice) / currentPrice;
+
+        // 2. WHALE ALERT LOGIC
+        // Threshold can be moved to config, using 500 as default
+        int whaleThreshold = plugin.getConfig().getInt("Stonks.WhaleThreshold", 500);
+        if (shares >= whaleThreshold) {
+            String pName = Bukkit.getOfflinePlayer(playerUuid).getName();
+            String action = isPurchase ? "§aBOUGHT" : "§cDUMPED";
+            String actionLower = isPurchase ? "buying" : "selling";
+
+            Bukkit.broadcastMessage("§6§l[WHALE ALERT] §f" + pName + " just " + action +
+                    " §e" + shares + " shares §fof §b" + company.getName() + "!");
+        }
+
+        // 3. Persist the change
+        updateCompanySharesValue(companyId, newPrice, variation);
+
+        // 4. Immediate Sign Refresh (Synchronous)
+        Bukkit.getScheduler().runTask(plugin, () ->
+                plugin.getSignsService().updateBukkitSignsByCompany(companyId)
+        );
     }
 
     @Override
