@@ -1,0 +1,65 @@
+package me.geraldr12.v110;
+
+import me.geraldr12.data.services.SignsService;
+import me.geraldr12.Migrator;
+import org.bukkit.Location;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.File;
+import java.util.Optional;
+import java.util.Set;
+
+public class SignsMigrator implements Migrator {
+
+    private final File pluginDataDirectory;
+    private final SignsService signsService;
+
+    public SignsMigrator(File pluginDataDirectory, SignsService signsService) {
+        this.pluginDataDirectory = pluginDataDirectory;
+        this.signsService = signsService;
+    }
+
+    @Override
+    public void migrate() {
+
+        File signsFile = getSignsFile();
+        FileConfiguration signsConfiguration = YamlConfiguration.loadConfiguration(signsFile);
+
+        if (!signsFile.exists()) {
+            return;
+        }
+
+        Set<String> signsIds = Optional.ofNullable(signsConfiguration.getConfigurationSection("Signs"))
+                .map(configurationSection -> configurationSection.getKeys(false))
+                .orElse(Set.of());
+
+        signsIds.forEach(signId -> {
+
+            Location signLocation = signsConfiguration.getLocation("Signs." + signId + ".Location");
+            int companyId = signsConfiguration.getInt("Signs." + signId + ".CompanyId");
+
+            signsService.createSign(companyId, signLocation);
+
+        });
+
+        archiveOldData();
+
+    }
+
+    @Override
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    public void archiveOldData() {
+        getSignsFile().renameTo(new File(pluginDataDirectory, "signs.yml.old"));
+    }
+
+    @Override
+    public String getOldDataVersion() {
+        return "v1.1.0";
+    }
+
+    private File getSignsFile() {
+        return new File(pluginDataDirectory, "signs.yml");
+    }
+
+}

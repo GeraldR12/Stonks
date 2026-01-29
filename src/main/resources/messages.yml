@@ -62,7 +62,7 @@ updatedInterestRate: "All commercial stocks have been updated."
 interestRateTimeLeft: "{0} minutes left to commercial stocks update."
 companyStocksCrashed: "The stocks of {0} have crashed! The company is now bankrupt..."
 
-newVersionAvailable: "Good news! New version of BlockStreet available."
+newVersionAvailable: "Good news! New version of Stonks available."
 unknownCommand: "Unknown command."
 
 uiPreviousPage: "§aPrevious Page"
