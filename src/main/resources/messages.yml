@@ -1,0 +1,156 @@
+pluginReload: "Plugin's config successfully reloaded."
+
+pluginPrefix: "§a§lBlockStreet §6> §r§7"
+pluginHeader: "§7-=-=-=-=-=-=-=-=-=-= [§aBlockStreet§7] =-=-=-=-=-=-=-=-=-=-"
+pluginFooter: "§7-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
+
+menuMainCmd: "Show all plugin's commands."
+menuCompaniesCmd: "List all companies."
+menuCompanyCmd: "Show details of a company."
+menuBuyCmd: "Buys stocks from company with the specified Id."
+menuSellCmd: "Sells stocks from company with the specified Id."
+menuActionsCmd: "List all your stocks."
+menuCreateCompanyCmd: "Creates a new company."
+menuDeleteCompanyCmd: "Delete a company."
+menuReloadCmd: "Reload plugin's configuration."
+menuTimeCmd: "Show time left to stocks update."
+
+listNextPage: "For next page."
+id: "Id"
+price: "Price"
+risk: "Level of risk"
+availableActions: "Available Shares"
+actionHistoric: "Historic"
+details: "Details"
+shares: "Shares"
+totalSharesValue: "Total Value"
+companyStatus: "Status"
+companyStatusBankrupt: "§cBankrupt"
+companyStatusTrading: "§aTrading"
+enabledString: "§aEnabled"
+disabledString: "§cDisabled"
+
+notificationStocksUpdateName: "Stocks Update"
+notificationCompanyBankruptName: "Company Bankruptcy"
+
+playerNotFound: "Player not found."
+playerOnlyCommand: "This command is only for players."
+noPermission: "You don't have enough permissions."
+nonExistantPage: "This page does not exists."
+missingArguments: "There are missing arguments."
+wrongArguments: "There are wrong arguments - §e{0} §7on position §e{1}§7."
+invalidCompany: "Invalid company."
+companyAlreadyExists: "This company already exists."
+insufficientMoney: "§7You do not have enough money. You need §e{0} §7to do that."
+insufficientActions: "This company doesn't have enough stocks to sell."
+playerNoActions: "You don't have enough stocks."
+playerAnyActions: "You don't have any stocks."
+buyActionsCmd: "Buy an amount of stocks from this company."
+sellActionsCmd: "Sell an amount of stocks from this company."
+boughtActions: "You have bought {0} stocks."
+soldActions: "You have sold {0} stocks for {1}."
+createdCompany: "You created the company {0}."
+deletedCompany: "You deleted the company {0}."
+cannotBuyBankruptCompany: "You cannot buy stocks from a bankrupt company."
+cannotDeleteNotOwnedCompany: "You cannot delete a company you do not own completely!"
+cannotOwnMoreThanMaxShares: "You cannot own more than {0} shares in total."
+notificationToggled: "§7You have {0} §7notifications for §6{1}§7."
+
+invalidCmd: "Invalid Command! Try again."
+interestRate: "Commercial stocks will be updated within {0} minutes."
+updatedInterestRate: "All commercial stocks have been updated."
+interestRateTimeLeft: "{0} minutes left to commercial stocks update."
+companyStocksCrashed: "The stocks of {0} have crashed! The company is now bankrupt..."
+
+newVersionAvailable: "Good news! New version of BlockStreet available."
+unknownCommand: "Unknown command."
+
+uiPreviousPage: "§aPrevious Page"
+uiNextPage: "§aNext Page"
+uiNavigateBack: "§aBack"
+uiPortfolioTitle: "Your Portfolio"
+uiInvestmentItemShares: "§aShares: §7{0}"
+uiInvestmentItemCurrentValue: "§aCurrent Value: §7{0}"
+uiInvestmentItemAverageBuyPrice: "§aAverage Buy Price: §7{0}"
+uiInvestmentItemSellOne: "§9[Right-Click] §7to sell 1 share"
+uiInvestmentItemSellAll: "§9[Shift+Right-Click] §7to sell all shares"
+uiCompaniesTitle: "Companies"
+uiCompanyItemStatus: "§aStatus: §7{0}"
+uiCompanyItemSharePrice: "§aShare Price: §7{0}"
+uiCompanyItemRisk: "§aRisk: §7{0}"
+uiCompanyItemMarketCap: "§aMarket Cap: §7{0}"
+uiCompanyItemAllTimeVariation: "§aTotal Variation: §7{0}"
+uiCompanyItemLastVariation: " §7[ {0} §7]"
+uiCompanyItemBuyOneShare: "§9[Right-Click] §7to buy 1 share"
+uiCompanyItemBuyTenShares: "§9[Shift+Right-Click] §7to buy 10 shares"
+uiCompanyItemBuyHundredShares: "§9[Shift+Left-Click] §7to buy 100 shares"
+uiCheckPortfolioButtonTitle: "§aPortfolio"
+uiCheckPortfolioButtonDescription: "§7Click to check your portfolio"
+uiPortfolioSummaryItemTitle: "§aPortfolio"
+uiPortfolioSummaryItemCompanies: "§7Invested Companies: §a{0}"
+uiPortfolioSummaryItemShares: "§7Total Shares: §a{0}"
+uiPortfolioSummaryItemTotalValue: "§7Total Value: §a{0}"
+uiNotificationsTitle: "Notification Settings"
+uiNotificationsItemTitle: "§6Notification Settings"
+uiNotificationsItemDescription: "§7Configure your notification preferences"
+uiNotificationsToggleStatus: "§7Status: {0}"
+
+adminCreateCommand:
+  description: "Allow admins to create new public company."
+  nameArg: "The name of the company to create."
+  riskArg: "The risk level of the company."
+  sharesArg: "The amount of shares to create for the company."
+  priceArg: "The price of each share."
+  iconArg: "The icon of the company (optional)."
+
+adminDeleteCommand:
+  description: "Allow admins to delete a public company."
+  companyIdArg: "The Id of the company to delete."
+
+buyCommand:
+  description: "Buy company shares."
+  companyIdArg: "The Id of the company to buy shares from."
+  amountArg: "The amount of shares to buy."
+
+companiesCommand:
+  description: "Check the companies with available shares to sell."
+
+companyCommand:
+  description: "Get details about a company."
+  companyIdArg: "The ID of the company to get details from."
+
+createCommand:
+  description: "Allow players to create new company."
+  nameArg: "The name of the company to create."
+  riskArg: "The risk of the company to create."
+  sharesArg: "The amount of shares to create for the company."
+  priceArg: "The price of each share."
+  iconArg: "The icon of the company (optional)."
+
+deleteCommand:
+  description: "Allow players to delete their company."
+  companyIdArg: "The id of the company to delete."
+
+helpCommand:
+  description: "Show all plugin's commands."
+
+infoCommand:
+  description: "Get extra information about the plugin."
+
+mainCommand:
+  description: "Opens the plugin main menu."
+
+portfolioCommand:
+  description: "Check your investments and shares."
+
+reloadCommand:
+  description: "Reloads the plugin."
+
+sellCommand:
+  description: "Sell company shares."
+  companyIdArg: "The ID of the company to sell shares from."
+  amountArg: "The amount of shares to sell."
+
+toggleNotificationsCommand:
+  description: "Toggle stock notifications."
+  notificationTypeArg: "The notification type to toggle the value for."

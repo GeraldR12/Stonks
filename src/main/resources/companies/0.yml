@@ -1,0 +1,9 @@
+id: 0
+name: "Blocks Corp"
+description: "Blocks Corp is a company that sells blocks."
+initialSharePrice: 1000
+currentSharePrice: 1000
+risk: 3
+totalShares: 100
+availableShares: 99
+historic: []
