@@ -1,7 +1,8 @@
+# Update these specific lines in messages.yml
 pluginReload: "Plugin's config successfully reloaded."
 
-pluginPrefix: "§a§lBlockStreet §6> §r§7"
-pluginHeader: "§7-=-=-=-=-=-=-=-=-=-= [§aBlockStreet§7] =-=-=-=-=-=-=-=-=-=-"
+pluginPrefix: "§a§lStonks §6> §r§7"
+pluginHeader: "§7-=-=-=-=-=-=-=-=-=-= [§aStonks§7] =-=-=-=-=-=-=-=-=-=-"
 pluginFooter: "§7-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
 
 menuMainCmd: "Show all plugin's commands."

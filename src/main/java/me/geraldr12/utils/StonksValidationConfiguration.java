@@ -5,7 +5,7 @@ import dev.hugog.minecraft.dev_command.validation.IAutoValidationConfiguration;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
-public class BlockStreetValidationConfiguration implements IAutoValidationConfiguration {
+public class StonksValidationConfiguration implements IAutoValidationConfiguration {
 
   private final Messages messages;
 

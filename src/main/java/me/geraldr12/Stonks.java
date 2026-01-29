@@ -13,7 +13,7 @@ import me.geraldr12.listeners.PlayerJoinListener;
 import me.geraldr12.listeners.SignsListener;
 import me.geraldr12.schedulers.InterestRateScheduler;
 import me.geraldr12.ui.GuiManager;
-import me.geraldr12.utils.BlockStreetValidationConfiguration;
+import me.geraldr12.utils.StonksValidationConfiguration;
 import me.geraldr12.utils.ConfigAccessor;
 import me.geraldr12.utils.Messages;
 import dev.hugog.minecraft.dev_command.DevCommand;
@@ -134,7 +134,7 @@ public class Stonks extends JavaPlugin {
             CommandHandler commandHandler = devCommand.getCommandHandler();
 
             commandHandler.initCommandsAutoConfiguration(pluginDevCommandsIntegration);
-            commandHandler.useAutoValidationConfiguration(new BlockStreetValidationConfiguration(messages));
+            commandHandler.useAutoValidationConfiguration(new StonksValidationConfiguration(messages));
         }
 
     }
