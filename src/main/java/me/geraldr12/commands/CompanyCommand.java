@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Company Command
- * Converted to standard Bukkit API via SubCommand interface.
  */
 public class CompanyCommand implements MainCommand.SubCommand {
 
@@ -30,7 +29,6 @@ public class CompanyCommand implements MainCommand.SubCommand {
         Messages messages = plugin.getMessages();
         GuiManager guiManager = plugin.getGuiManager();
 
-        // Check permission manually
         if (!player.hasPermission("blockstreet.command.company")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
             return true;

@@ -1,12 +1,8 @@
 package me.geraldr12.commands;
 
 import me.geraldr12.Stonks;
-import me.geraldr12.data.dao.CompanyDao;
-import me.geraldr12.data.services.CompaniesService;
-import me.geraldr12.data.services.PlayersService;
-import me.geraldr12.utils.Messages;
-import net.milkbowl.vault.economy.Economy;
-import org.bukkit.Bukkit;
+import me.geraldr12.data.services.BuyTransactionResult;
+import me.geraldr12.data.services.BuyTransactionService;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -15,75 +11,58 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class BuyCommand implements MainCommand.SubCommand {
+    @FunctionalInterface
+    interface BuyExecutor {
+        BuyTransactionResult execute(java.util.UUID playerId, Player player, long companyId, int quantity);
+    }
 
     private final Stonks plugin;
+    private final BuyExecutor transactions;
 
     public BuyCommand(Stonks plugin) {
+        this(plugin, new BuyTransactionService(plugin)::execute);
+    }
+
+    BuyCommand(Stonks plugin, BuyExecutor transactions) {
         this.plugin = plugin;
+        this.transactions = transactions;
     }
 
     @Override
     public boolean onCommand(Player player, String[] args) {
-        Messages messages = plugin.getMessages();
-        Economy vaultEconomy = plugin.getEconomy();
-        CompaniesService companiesService = plugin.getCompaniesService();
-        PlayersService playersService = plugin.getPlayersService();
-
         if (args.length < 2) {
-            player.sendMessage(messages.getPluginPrefix() + "Usage: /invest buy <id> <amount>");
+            player.sendMessage(plugin.getMessages().getPluginPrefix() + "Usage: /invest buy <id> <amount>");
             return true;
         }
-
         try {
             long companyId = Long.parseLong(args[0]);
-            int numberOfSharesToBuy = Integer.parseInt(args[1]);
-
-            if (!companiesService.companyExists(companyId)) {
-                player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
+            int shares = Integer.parseInt(args[1]);
+            if (companyId < 0 || shares <= 0) {
+                player.sendMessage(plugin.getMessages().getPluginPrefix() + "Error: ID and Amount must be positive.");
                 return true;
             }
-
-            CompanyDao company = companiesService.getCompanyById(companyId);
-            if (company.isBankrupt()) {
-                player.sendMessage(messages.getPluginPrefix() + messages.getCannotBuyBankruptCompany());
-                return true;
-            }
-
-            if (!companiesService.hasEnoughShares(companyId, numberOfSharesToBuy)) {
-                player.sendMessage(messages.getPluginPrefix() + messages.getInsufficientActions());
-                return true;
-            }
-
-            int sharesLimit = plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer");
-            long playerSharesCount = playersService.getTotalPlayerSharesCount(player.getUniqueId());
-            if (sharesLimit > 0 && (playerSharesCount + numberOfSharesToBuy) > sharesLimit) {
-                player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCannotOwnMoreThanMaxShares(), sharesLimit));
-                return true;
-            }
-
-            double investmentPrice = companiesService.getCompanyInvestmentValue(companyId, numberOfSharesToBuy);
-            if (vaultEconomy.getBalance(player) < investmentPrice) {
-                player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getInsufficientMoney(), investmentPrice));
-                return true;
-            }
-
-            // --- TRANSACTION LOGIC (Synchronous) ---
-            vaultEconomy.withdrawPlayer(player, investmentPrice);
-            companiesService.removeSharesFromCompany(companyId, numberOfSharesToBuy);
-            playersService.addSharesToPlayer(player.getUniqueId(), company, numberOfSharesToBuy);
-
-            // --- MARKET IMPACT (Asynchronous to prevent Event Thread Error) ---
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                companiesService.applyMarketImpact(player.getUniqueId(), companyId, numberOfSharesToBuy, true);
-            });
-
-            player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getBoughtActions(), numberOfSharesToBuy));
-
+            BuyTransactionResult result = transactions.execute(player.getUniqueId(), player, companyId, shares);
+            player.sendMessage(plugin.getMessages().getPluginPrefix() + message(result));
+            return true;
         } catch (NumberFormatException e) {
-            player.sendMessage(messages.getPluginPrefix() + "Error: ID and Amount must be numbers.");
+            player.sendMessage(plugin.getMessages().getPluginPrefix() + "Error: ID and Amount must be numbers.");
+            return true;
         }
+    }
 
-        return true;
+    private String message(BuyTransactionResult result) {
+        return switch (result.status()) {
+            case SUCCESS -> MessageFormat.format(plugin.getMessages().getBoughtActions(), result.quantity());
+            case VALIDATION_REJECTED -> plugin.getMessages().getInvalidCompany();
+            case INSUFFICIENT_FUNDS -> MessageFormat.format(plugin.getMessages().getInsufficientMoney(),
+                    me.geraldr12.utils.FormattingUtils.formatDouble(result.totalValue()));
+            case INSUFFICIENT_SHARES -> plugin.getMessages().getInsufficientActions();
+            case PAYMENT_REJECTED -> "Unable to complete the payment.";
+            case COMPENSATED -> "Purchase could not be completed; your payment was refunded.";
+            case COMMITTED_MARKET_RECONCILIATION -> "Purchase completed; market update requires administrator reconciliation.";
+            case BLOCKED_PENDING_REVIEW -> "Trading is paused for this company or your account: an earlier transaction is awaiting administrator review. Nothing was charged.";
+            case RECONCILIATION_REQUIRED, CRITICAL_UNRESOLVED -> "CRITICAL: purchase state requires administrator reconciliation.";
+        };
     }
 
     @Override
@@ -92,9 +71,8 @@ public class BuyCommand implements MainCommand.SubCommand {
             return plugin.getCompaniesService().getAllCompanies().stream()
                     .map(company -> String.valueOf(company.getId()))
                     .collect(Collectors.toList());
-        } else if (args.length == 2) {
-            return List.of("1", "10", "100");
         }
+        if (args.length == 2) return List.of("1", "10", "100");
         return List.of();
     }
 }

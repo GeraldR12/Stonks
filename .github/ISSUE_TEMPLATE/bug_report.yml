@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Stonks doesn't work the way the guides say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If the bug lets players create or lose money, please use the private report in SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Stonks version
+      description: Run `/invest info` in game.
+      placeholder: "2.10.2"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server software and version
+      placeholder: "Paper 26.3"
+    validations:
+      required: true
+  - type: input
+    id: economy
+    attributes:
+      label: Economy plugin and version
+      placeholder: "TheNewEconomy 0.1.5.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. /invest buy 0 10
+        2. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      description: Lines from `logs/latest.log` that mention Stonks. Remove IPs and anything private.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: The part of `plugins/Stonks/config.yml` you changed, if any.
+      render: yaml

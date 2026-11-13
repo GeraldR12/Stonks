@@ -19,6 +19,10 @@ import java.util.stream.Collectors;
 
 public class CompaniesRepository implements Repository<Long, CompanyEntity> {
 
+    private static final java.util.concurrent.ConcurrentMap<java.nio.file.Path, Object> ALLOCATOR_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Object UNRESOLVED_ALLOCATOR_LOCK = new Object();
+
     private final File pluginDataFolder;
     private final DataSource<CompanyEntity> dataSource;
 
@@ -40,15 +44,15 @@ public class CompaniesRepository implements Repository<Long, CompanyEntity> {
     }
 
     @Override
-    public void save(CompanyEntity dataEntity) {
-        if (!isDataSourceValid()) return;
-        dataSource.save(DataFilePath.COMPANIES.getFullPathById(String.valueOf(dataEntity.getId())), dataEntity);
+    public boolean save(CompanyEntity dataEntity) {
+        if (!isDataSourceValid() || dataEntity == null) return false;
+        return dataSource.save(DataFilePath.COMPANIES.getFullPathById(String.valueOf(dataEntity.getId())), dataEntity);
     }
 
     @Override
-    public void delete(Long id) {
-        if (!isDataSourceValid()) return;
-        dataSource.delete(DataFilePath.COMPANIES.getFullPathById(String.valueOf(id)));
+    public boolean delete(Long id) {
+        if (!isDataSourceValid() || id == null) return false;
+        return dataSource.delete(DataFilePath.COMPANIES.getFullPathById(String.valueOf(id)));
     }
 
     public List<Long> getAllIds() {
@@ -61,49 +65,94 @@ public class CompaniesRepository implements Repository<Long, CompanyEntity> {
                 .collect(Collectors.toList());
     }
 
-    public Long getNextId() {
-        if (!isDataSourceValid()) return 1L;
-
-        File dataFile = new File(this.pluginDataFolder, DataFilePath.COMPANIES.getFullPathById("data"));
-
-        // Ensure parent directories exist
-        if (!dataFile.getParentFile().exists()) {
-            dataFile.getParentFile().mkdirs();
-        }
-
-        if (!dataFile.exists()) {
-            return 1L; // Return 1 if the file doesn't exist yet
-        }
-
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        try {
-            CompanyDataYml companyDataYml = mapper.readValue(dataFile, CompanyDataYml.class);
-            return companyDataYml != null && companyDataYml.nextId != null ? companyDataYml.nextId : 1L;
-        } catch (IOException e) {
-            return 1L; // Default to 1 on error
+    public Long allocateNextId() {
+        synchronized (allocatorLock(pluginDataFolder)) {
+            return allocateNextIdLocked();
         }
     }
 
-    public void incrementNextId() {
-        if (!isDataSourceValid()) return;
+    private static Object allocatorLock(File pluginDataFolder) {
+        java.nio.file.Path normalized = pluginDataFolder.toPath().toAbsolutePath().normalize();
+        try {
+            return ALLOCATOR_LOCKS.computeIfAbsent(normalized.toRealPath(), ignored -> new Object());
+        } catch (java.io.IOException ignored) {
+            return UNRESOLVED_ALLOCATOR_LOCK;
+        }
+    }
 
-        File dataFile = new File(this.pluginDataFolder, DataFilePath.COMPANIES.getFullPathById("data"));
+    private Long allocateNextIdLocked() {
+        if (!isDataSourceValid()) return null;
+
+        File dataFile = new File(this.pluginDataFolder,
+                DataFilePath.COMPANIES.getFullPathById("data"));
+        File parent = dataFile.getParentFile();
+        if (parent == null || (!parent.exists() && !parent.mkdirs())
+                || !parent.isDirectory()) {
+            return null;
+        }
+
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-
+        java.nio.file.Path temporaryFile = null;
         try {
             CompanyDataYml companyDataYml;
             if (dataFile.exists()) {
                 companyDataYml = mapper.readValue(dataFile, CompanyDataYml.class);
-                if (companyDataYml == null) companyDataYml = new CompanyDataYml(1L);
+                if (companyDataYml == null || companyDataYml.getNextId() == null) {
+                    return null;
+                }
             } else {
-                companyDataYml = new CompanyDataYml(1L);
+                Long nextId = recoverNextIdFromCompanies();
+                if (nextId == null) return null;
+                companyDataYml = new CompanyDataYml(nextId);
             }
 
-            companyDataYml.nextId++;
-            mapper.writeValue(dataFile, companyDataYml);
-        } catch (IOException e) {
-            e.printStackTrace();
+            Long assignedId = companyDataYml.getNextId();
+            if (assignedId <= 0 || assignedId == Long.MAX_VALUE) {
+                return null;
+            }
+
+            companyDataYml.setNextId(assignedId + 1);
+            temporaryFile = new File(parent,
+                    dataFile.getName() + "." + java.util.UUID.randomUUID() + ".tmp").toPath();
+            mapper.writeValue(temporaryFile.toFile(), companyDataYml);
+
+            try {
+                java.nio.file.Files.move(temporaryFile, dataFile.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                java.nio.file.Files.move(temporaryFile, dataFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            temporaryFile = null;
+            return assignedId;
+        } catch (java.io.IOException | RuntimeException e) {
+            return null;
+        } finally {
+            if (temporaryFile != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(temporaryFile);
+                } catch (java.io.IOException ignored) {
+                    // The allocation already failed closed; orphan cleanup is best effort.
+                }
+            }
         }
+    }
+
+    private Long recoverNextIdFromCompanies() {
+        List<String> ids = ((CompaniesYml) dataSource).getAllIds(DataFilePath.COMPANIES.getDataPath());
+        long maxId = 0L;
+        for (String id : ids) {
+            if (!id.matches("\\d+")) continue;
+            try {
+                long parsedId = Long.parseLong(id);
+                if (parsedId <= 0) continue;
+                maxId = Math.max(maxId, parsedId);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return maxId == Long.MAX_VALUE ? null : maxId + 1;
     }
 
     @Override

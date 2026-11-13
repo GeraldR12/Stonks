@@ -14,7 +14,6 @@ import java.util.List;
 
 /**
  * Help Command
- * Standard Bukkit conversion.
  */
 public class HelpCommand implements MainCommand.SubCommand {
 
@@ -32,7 +31,6 @@ public class HelpCommand implements MainCommand.SubCommand {
         player.sendMessage(messages.getPluginHeader());
         player.sendMessage("");
 
-        // Manually define the help entries since the framework registry is gone
         sendHelpLine(player, "buy", "<id> <amount>", "buyCommand.description");
         sendHelpLine(player, "sell", "<id> <amount>", "sellCommand.description");
         sendHelpLine(player, "portfolio", "", "portfolioCommand.description");

@@ -13,7 +13,7 @@ public class CompanyBankruptEvent extends Event {
     private final CompanyDao company;
 
     public CompanyBankruptEvent(CompanyDao company) {
-        super(true);
+        super(false);
         this.company = company;
     }
 

@@ -10,9 +10,9 @@ public interface Repository<T, K extends DataEntity> {
 
     boolean exists(T id);
 
-    void save(K dataEntity);
+    boolean save(K dataEntity);
 
-    void delete(T id);
+    boolean delete(T id);
 
     /**
      * Verifies if the data source is valid for the repository.

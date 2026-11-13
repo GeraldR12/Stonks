@@ -11,12 +11,14 @@ public class CompanySubCommand implements MainCommand.SubCommand {
 
     private final CreateCommand create;
     private final DeleteCommand delete;
-    private final CompanyCommand info; // Assuming you converted CompanyCommand for 'info'
+    private final CompanyCommand info;
+    private final ShopLinkCommand shop;
 
     public CompanySubCommand(Stonks plugin) {
         this.create = new CreateCommand(plugin);
         this.delete = new DeleteCommand(plugin);
         this.info = new CompanyCommand(plugin);
+        this.shop = new ShopLinkCommand(plugin);
     }
 
     @Override
@@ -32,6 +34,8 @@ public class CompanySubCommand implements MainCommand.SubCommand {
             return delete.onCommand(player, subArgs);
         } else if (action.equals("info")) {
             return info.onCommand(player, subArgs);
+        } else if (action.equals("shop")) {
+            return shop.onCommand(player, subArgs);
         }
 
         return true;
@@ -40,7 +44,7 @@ public class CompanySubCommand implements MainCommand.SubCommand {
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            return List.of("create", "delete", "info");
+            return List.of("create", "delete", "info", "shop");
         }
         String action = args[0].toLowerCase();
         String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
@@ -48,6 +52,7 @@ public class CompanySubCommand implements MainCommand.SubCommand {
         if (action.equals("create")) return create.onTabComplete(sender, subArgs);
         if (action.equals("delete")) return delete.onTabComplete(sender, subArgs);
         if (action.equals("info")) return info.onTabComplete(sender, subArgs);
+        if (action.equals("shop")) return shop.onTabComplete(sender, subArgs);
 
         return List.of();
     }

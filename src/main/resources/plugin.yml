@@ -1,9 +1,14 @@
 name: Stonks
 main: me.geraldr12.Stonks
-version: 2.9.1
+version: 2.10.2
 api-version: 1.16
 depend:
   - Vault
+softdepend:
+  - Towny
+  - QuickShop-Hikari
+  - AdvancedJobs
+  - ExcellentShop
 commands:
   invest:
     description: Main investment command.
@@ -11,3 +16,50 @@ commands:
   company:
     description: Manage your personal company.
     usage: /<command>
+permissions:
+  stonks.use:
+    description: Use Stonks commands.
+    default: true
+  stonks.admin.reconcile:
+    description: Acknowledge or resolve Stonks transaction records.
+    default: op
+  stonks.admin.investigate:
+    description: Inspect transactions and append investigation evidence without financial settlement.
+    default: op
+  stonks.command.company:
+    description: Use the company command.
+    default: true
+  stonks.command.company.shop:
+    description: Link your chest shops to your companies.
+    default: true
+  stonks.ui.companies:
+    description: Access the companies GUI.
+    default: true
+  stonks.ui.portfolio:
+    description: Access the portfolio GUI.
+    default: true
+  stonks.ui.notifications:
+    description: Access the notifications GUI.
+    default: true
+  blockstreet.command.company:
+    description: Use company management commands.
+    default: true
+  blockstreet.command.companies:
+    description: View listed companies.
+    default: true
+  blockstreet.command.portfolio:
+    description: View a portfolio.
+    default: true
+  blockstreet.command.notification:
+    description: Manage notification settings.
+    default: true
+  blockstreet.admin.reload:
+    description: Reload Stonks configuration.
+    default: op
+  blockstreet.admin.command.create:
+    description: Create companies administratively.
+    default: op
+  blockstreet.admin.command.delete:
+    description: Delete companies administratively.
+    default: op
+

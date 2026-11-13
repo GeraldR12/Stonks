@@ -33,25 +33,21 @@ public class StocksRandomizer {
         double randomQuotePercentage = getRandomQuoteAsPercentage();
         double generatedNoise = generateNoise();
 
-        double quote = randomQuotePercentage + generatedNoise;
-        double stockChange = currentStockValue * quote;
+        return boundedQuote(currentStockValue, randomQuotePercentage + generatedNoise,
+                randomSignal, this.minLimit, this.maxLimit);
 
-        // If the random signal is positive and the stock value + the stock change is greater than the max limit
-        // we need to transform the positive quote into a negative quote to not exceed the max limit
-        if (randomSignal && currentStockValue + stockChange > this.maxLimit) {
-            // Transform positive quote into negative quote
-            quote = -quote;
+    }
 
-            // If the random signal is negative and the stock value - the stock change is above the min limit
-            // we can transform the positive quote into a negative quote and not exceed the min limit
-        } else if (!randomSignal && currentStockValue - stockChange > this.minLimit) {
-            quote = -quote;
-        } else {
-            quote = Math.abs(quote);
+    static double boundedQuote(double current, double magnitude, boolean positive,
+                               double minLimit, double maxLimit) {
+        double stockChange = current * magnitude;
+        if (positive) {
+            return current + stockChange > maxLimit ? -magnitude : magnitude;
         }
-
-        return quote;
-
+        if (current - stockChange > minLimit) {
+            return -magnitude;
+        }
+        return current > minLimit ? (minLimit - current) / current : 0;
     }
 
     private double generateNoise() {

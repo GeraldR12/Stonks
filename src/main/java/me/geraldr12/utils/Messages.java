@@ -8,6 +8,38 @@ import lombok.Getter;
 @Getter
 public class Messages {
 
+    private static final java.util.Map<String, String> UI_DEFAULTS = java.util.Map.ofEntries(
+            java.util.Map.entry("uiMainMenuTitle", "Stonks"),
+            java.util.Map.entry("uiMainMarket", "§aMarket"),
+            java.util.Map.entry("uiMainPortfolio", "§aMy Portfolio"),
+            java.util.Map.entry("uiMainCompanies", "§aMy Companies"),
+            java.util.Map.entry("uiMainNotifications", "§6Notifications"),
+            java.util.Map.entry("uiMainHelp", "§aHelp"),
+            java.util.Map.entry("uiMainClose", "§cClose"),
+            java.util.Map.entry("uiMainHelpBuy", "§7/invest buy <id> <amount>"),
+            java.util.Map.entry("uiMainHelpSell", "§7/invest sell <id> <amount>"),
+            java.util.Map.entry("uiMainHelpPortfolio", "§7/invest portfolio"),
+            java.util.Map.entry("uiMainHelpCompanies", "§7/invest companies"),
+            java.util.Map.entry("uiMainHelpCreate", "§7/invest company create <name> <risk> <shares> <price>"),
+            java.util.Map.entry("uiMainHelpDelete", "§7/invest company delete <id>"),
+            java.util.Map.entry("uiDetailTitle", "Company Details"),
+            java.util.Map.entry("uiDetailCompanyName", "§6{0}"),
+            java.util.Map.entry("uiDetailAvailableShares", "§aAvailable Shares: §7{0}"),
+            java.util.Map.entry("uiDetailBuyOne", "§aBuy 1 share"),
+            java.util.Map.entry("uiDetailBuyTen", "§aBuy 10 shares"),
+            java.util.Map.entry("uiDetailBuyHundred", "§aBuy 100 shares"),
+            java.util.Map.entry("uiDetailSellOne", "§cSell 1 share"),
+            java.util.Map.entry("uiDetailSellTen", "§cSell 10 shares"),
+            java.util.Map.entry("uiDetailSellAll", "§cSell all shares"),
+            java.util.Map.entry("uiDeleteTitle", "Confirm Company Deletion"),
+            java.util.Map.entry("uiDeleteCompanyName", "§6Delete {0}?"),
+            java.util.Map.entry("uiDeleteButton", "§c§lDELETE COMPANY"),
+            java.util.Map.entry("uiDeleteDescription", "§7Click to review company deletion."),
+            java.util.Map.entry("uiDeleteWarning", "§4This cannot be undone!"),
+            java.util.Map.entry("uiDeleteConfirm", "§aConfirm deletion"),
+            java.util.Map.entry("uiDeleteCancel", "§cCancel")
+    );
+
     private final ConfigAccessor messagesConfig;
 
     private String pluginPrefix;
@@ -136,7 +168,8 @@ public class Messages {
     }
 
     public String getMessageByKey(String key) {
-        return this.messagesConfig.getConfig().getString(key);
+        String value = this.messagesConfig.getConfig().getString(key);
+        return value != null ? value : UI_DEFAULTS.get(key);
     }
 
     private void initializeMessages() {

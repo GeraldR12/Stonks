@@ -1,0 +1,14 @@
+package me.geraldr12.persistence;
+
+public enum MarketTransactionEffectType {
+    ECONOMY_DEBIT,
+    COMPANY_SHARE_REMOVAL,
+    PLAYER_SHARE_ADD,
+    PLAYER_SHARE_RESTORATION,
+    COMPANY_SHARE_RESTORATION,
+    ECONOMY_REFUND,
+    MARKET_IMPACT,
+    PLAYER_SHARE_REMOVAL,
+    COMPANY_SHARE_ADD,
+    ECONOMY_CREDIT
+}
