@@ -25,6 +25,8 @@ Stonks:
   Treasury:
     Account: ""                # Server account that receives trading fees and creation tax (e.g. TNE's Server_Account). Empty: fees leave the economy.
     BackServerShop: false      # If true, ExcellentShop's /shop pays sellers out of that account and puts purchases into it.
+  History:
+    Enabled: true              # Appends every price change to plugins/Stonks/history/<companyId>.csv (no player names).
   Limits:
     MinSharePrice: 30          # Lowest share price allowed when a player creates a company (-1 disables).
     MaxSharePrice: 50          # Highest share price allowed when a player creates a company (-1 disables).

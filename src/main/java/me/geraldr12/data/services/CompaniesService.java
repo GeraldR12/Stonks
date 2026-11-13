@@ -518,6 +518,9 @@ public class CompaniesService implements Service {
         boolean saved = updateCompanySharesValue(companyId, newPrice, variation);
 
         if (saved) {
+            PriceHistoryLog.record(plugin.getPriceHistoryLog(), companyId, company.getName(), company.getRisk(),
+                    isPurchase ? PriceHistoryLog.Source.BUY : PriceHistoryLog.Source.SELL,
+                    shares, currentPrice, newPrice, variation);
             plugin.getSignsService().updateBukkitSignsByCompany(companyId);
         } else {
             plugin.getLogger().severe("CRITICAL: Failed to save market impact for company " + companyId);

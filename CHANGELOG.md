@@ -2,6 +2,14 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.10.3] - 2026-11-13
+
+### Added
+- Price history files: every price change is appended to `plugins/Stonks/history/<companyId>.csv` with the time, the source (`update`, `crash`, `buy`, `sell`), the shares traded, the old and new price and the variation. No player names. Turn it off with `History.Enabled: false`.
+
+### Fixed
+- Each timed update reversed the stored price history, so `/invest company info` showed it out of order and, once a company reached 500 entries, a recent price could be dropped instead of the oldest. History is now kept oldest first, and histories saved out of order by older versions are sorted again when loaded.
+
 ## [2.10.2] - 2026-11-13
 
 ### Fixed
@@ -41,4 +49,5 @@ All notable changes to Stonks. Versions follow [semantic versioning](https://sem
 
 Stonks grew out of [BlockStreet](https://github.com/Hugo1307/BlockStreet). See the repository history for older changes.
 
+[2.10.3]: https://github.com/GeraldR12/Stonks/releases/tag/v2.10.3
 [2.10.2]: https://github.com/GeraldR12/Stonks/releases/tag/v2.10.2
