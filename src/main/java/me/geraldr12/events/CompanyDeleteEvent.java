@@ -13,7 +13,11 @@ public class CompanyDeleteEvent extends Event {
     private final CompanyDao company;
 
     public CompanyDeleteEvent(CompanyDao company) {
-        super(true);
+        this(company, false);
+    }
+
+    public CompanyDeleteEvent(CompanyDao company, boolean async) {
+        super(async);
         this.company = company;
     }
 

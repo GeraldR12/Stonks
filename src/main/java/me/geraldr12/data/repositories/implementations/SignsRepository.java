@@ -40,18 +40,18 @@ public class SignsRepository implements Repository<Integer, SignEntity> {
     }
 
     @Override
-    public void save(SignEntity dataEntity) {
+    public boolean save(SignEntity dataEntity) {
 
-        if (!isDataSourceValid()) return;
-        dataSource.save(DataFilePath.SIGNS.getFullPathById(String.valueOf(dataEntity.getId())), dataEntity);
+        if (!isDataSourceValid() || dataEntity == null) return false;
+        return dataSource.save(DataFilePath.SIGNS.getFullPathById(String.valueOf(dataEntity.getId())), dataEntity);
 
     }
 
     @Override
-    public void delete(Integer id) {
+    public boolean delete(Integer id) {
 
-        if (!isDataSourceValid()) return;
-        dataSource.delete(DataFilePath.SIGNS.getFullPathById(id.toString()));
+        if (!isDataSourceValid() || id == null) return false;
+        return dataSource.delete(DataFilePath.SIGNS.getFullPathById(id.toString()));
 
     }
 

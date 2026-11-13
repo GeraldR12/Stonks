@@ -7,7 +7,11 @@ import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.data.services.SignsService;
 import me.geraldr12.enums.NotificationType;
+import me.geraldr12.events.CompanyStockUpdateEvent;
+import me.geraldr12.persistence.MarketTransactionJournal;
+import me.geraldr12.utils.SizedStack;
 import me.geraldr12.events.CompanyBankruptEvent;
+import me.geraldr12.utils.MarketTransactionLocks;
 import me.geraldr12.utils.Messages;
 import me.geraldr12.utils.random.StocksRandomizer;
 import org.bukkit.Bukkit;
@@ -24,6 +28,7 @@ public class InterestRateScheduler extends BukkitRunnable {
     private final SignsService signsService;
     private final PlayersService playersService;
     private final Messages messages;
+    private boolean bankruptcyRemovalWarningLogged;
 
     @Inject
     public InterestRateScheduler(Stonks plugin, CompaniesService companiesService, SignsService signsService,
@@ -40,61 +45,130 @@ public class InterestRateScheduler extends BukkitRunnable {
         List<CompanyDao> allCompanies = companiesService.getAllCompanies();
 
         for (CompanyDao company : allCompanies) {
-            // 1. Skip if already processed or fully removed
-            if (company.isBankrupt()) {
-                // Still update signs for bankrupt companies to ensure they stay "BANKRUPT"
-                updateSigns(company.getId());
-                continue;
+            try {
+                processCompany(company);
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Interest-rate update failed for company " + company.getId(), e);
             }
-
-            // 2. Base the tick on CURRENT price (Player Impact Included)
-            double currentPrice = company.getCurrentSharePrice();
-            StocksRandomizer stocksRandomizer = new StocksRandomizer(company.getRisk(), company.getInitialSharePrice());
-
-            double newSharesQuote = stocksRandomizer.getRandomQuote(currentPrice);
-            double newSharePrice = stocksRandomizer.getRandomStockValue(currentPrice, newSharesQuote);
-
-            // 3. Crash Logic
-            if (shouldCrash(company.getRisk(), stocksRandomizer, newSharePrice)) {
-                newSharePrice = 0;
-            }
-
-            // 4. Update the Value
-            companiesService.updateCompanySharesValue(company.getId(), newSharePrice, newSharesQuote);
-
-            // 5. Update History
-            QuoteDao quoteDao = new QuoteDao(newSharesQuote, newSharePrice, System.currentTimeMillis());
-            companiesService.updateCompanyHistoric(company.getId(), quoteDao);
-
-            // 6. Handle New Bankruptcy
-            if (newSharePrice <= 0) {
-                handleBankruptcy(company);
-            }
-
-            // 7. Update Signs (Safe method)
-            updateSigns(company.getId());
         }
 
         broadcastUpdate();
     }
 
-    private void handleBankruptcy(CompanyDao company) {
-        CompanyBankruptEvent bankruptEvent = new CompanyBankruptEvent(company);
-        Bukkit.getPluginManager().callEvent(bankruptEvent);
+    private boolean isFinanciallyReady(MarketTransactionJournal journal) {
+        try {
+            return MarketTransactionLocks.isJournalLifecycleReady(plugin, journal);
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
 
+    private void processCompany(CompanyDao company) {
+        MarketTransactionJournal journal;
+        try {
+            journal = plugin == null ? null : plugin.getTransactionJournal();
+        } catch (RuntimeException exception) {
+            return;
+        }
+        if (!isFinanciallyReady(journal)) {
+            return;
+        }
+
+        try (MarketTransactionLocks.Admission admission = MarketTransactionLocks.tryAdmit(journal)) {
+            if (admission == null) {
+                return;
+            }
+
+            CompanyDao completedCompany;
+            boolean bankrupt;
+            double oldSharePrice;
+            double newSharePrice;
+            double newSharesQuote;
+            synchronized (MarketTransactionLocks.company(company.getId())) {
+                CompanyDao current = companiesService.getCompanyById(company.getId());
+                if (current == null || current.isBankrupt()) {
+                    if (current != null && current.isBankrupt()) {
+                        updateSigns(current.getId());
+                    }
+                    return;
+                }
+
+                oldSharePrice = current.getCurrentSharePrice();
+                StocksRandomizer stocksRandomizer = new StocksRandomizer(
+                        current.getRisk(), current.getInitialSharePrice());
+                newSharesQuote = stocksRandomizer.getRandomQuote(oldSharePrice);
+                newSharePrice = stocksRandomizer.getRandomStockValue(oldSharePrice, newSharesQuote);
+                if (shouldCrash(current.getRisk(), stocksRandomizer, newSharePrice)) {
+                    newSharePrice = 0;
+                }
+
+                SizedStack<QuoteDao> history = current.getHistoric() == null
+                        ? new SizedStack<>(500)
+                        : current.getHistoric().fromList(current.getHistoric().toList());
+                history.push(new QuoteDao(newSharesQuote, newSharePrice, System.currentTimeMillis()));
+                CompanyDao snapshot = CompanyDao.builder()
+                        .id(current.getId())
+                        .name(current.getName())
+                        .description(current.getDescription())
+                        .icon(current.getIcon())
+                        .initialSharePrice(current.getInitialSharePrice())
+                        .currentSharePrice(newSharePrice)
+                        .risk(current.getRisk())
+                        .totalShares(current.getTotalShares())
+                        .availableShares(current.getAvailableShares())
+                        .historic(history)
+                        .ownerUuid(current.getOwnerUuid())
+                        .bankrupt(newSharePrice <= 0 || current.isBankrupt())
+                        .build();
+
+                if (!companiesService.persistSchedulerSnapshot(snapshot)) {
+                    throw new IllegalStateException("Unable to persist scheduler company snapshot");
+                }
+                completedCompany = snapshot;
+                bankrupt = snapshot.isBankrupt();
+            }
+
+            if (plugin.getServer() != null && plugin.getServer().getPluginManager() != null) {
+                plugin.getServer().getPluginManager().callEvent(new CompanyStockUpdateEvent(
+                        completedCompany, oldSharePrice, newSharePrice, newSharesQuote));
+            }
+            if (bankrupt) {
+                if (plugin.getServer() != null && plugin.getServer().getPluginManager() != null) {
+                    plugin.getServer().getPluginManager().callEvent(new CompanyBankruptEvent(completedCompany));
+                }
+                if (plugin.getServer() != null) {
+                    plugin.getServer().getOnlinePlayers().stream()
+                            .filter(player -> playersService.hasNotificationEnabled(
+                                    player.getUniqueId(), NotificationType.COMPANY_BANKRUPT))
+                            .forEach(player -> player.sendMessage(messages.getPluginPrefix()
+                                    + MessageFormat.format(messages.getCompanyStocksCrashed(), completedCompany.getName())));
+                }
+            }
+            updateSigns(company.getId());
+        }
+    }
+
+    private void handleBankruptcy(CompanyDao company) {
         processBankruptCompany(company);
+
+        CompanyDao bankruptCompany = companiesService.getCompanyById(company.getId());
+        if (bankruptCompany == null || !bankruptCompany.isBankrupt()
+                || bankruptCompany.getCurrentSharePrice() != 0.0) {
+            throw new IllegalStateException("Unable to verify bankrupt company state");
+        }
+
+        CompanyBankruptEvent bankruptEvent = new CompanyBankruptEvent(bankruptCompany);
+        Bukkit.getPluginManager().callEvent(bankruptEvent);
 
         plugin.getServer().getOnlinePlayers().stream()
                 .filter(player -> playersService.hasNotificationEnabled(player.getUniqueId(), NotificationType.COMPANY_BANKRUPT))
                 .forEach(player -> player.sendMessage(messages.getPluginPrefix() +
-                        MessageFormat.format(messages.getCompanyStocksCrashed(), company.getName())));
+                        MessageFormat.format(messages.getCompanyStocksCrashed(), bankruptCompany.getName())));
     }
 
     private void updateSigns(long companyId) {
-        // Run on main thread to avoid Bukkit API async errors
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            signsService.updateBukkitSignsByCompany(companyId);
-        });
+        signsService.updateBukkitSignsByCompany(companyId);
     }
 
     private void broadcastUpdate() {
@@ -117,15 +191,14 @@ public class InterestRateScheduler extends BukkitRunnable {
 
     private void processBankruptCompany(CompanyDao company) {
         boolean shouldRemove = plugin.getConfig().getBoolean("Stonks.StockCrash.RemoveBankrupt", false);
-        if (shouldRemove) {
-            // This is likely what is breaking your signs!
-            // If you delete the company, the signs have nothing to display.
-            companiesService.deleteCompany(company.getId());
-            playersService.cleanUpInvestmentsForOnlinePlayers(companiesService.getAllCompanies());
-        } else {
-            // Keep the company but mark price as 0
-            company.setBankrupt(true);
-            companiesService.updateCompanySharesValue(company.getId(), 0.0, -1.0);
+        if (shouldRemove && !bankruptcyRemovalWarningLogged) {
+            plugin.getLogger().warning(
+                    "Automatic bankrupt-company removal is disabled until durable all-shareholder settlement is implemented.");
+            bankruptcyRemovalWarningLogged = true;
+        }
+
+        if (!companiesService.markCompanyBankrupt(company.getId())) {
+            throw new IllegalStateException("Unable to persist bankrupt company state");
         }
     }
 }

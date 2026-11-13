@@ -1,33 +1,17 @@
 package me.geraldr12.ui.items;
 
+import java.util.List;
 import me.geraldr12.ui.GuiManager;
 import me.geraldr12.ui.PluginGuiType;
+import me.geraldr12.ui.menu.MenuButton;
+import me.geraldr12.ui.menu.MenuIcon;
 import me.geraldr12.utils.Messages;
-import lombok.RequiredArgsConstructor;
 import org.bukkit.Material;
-import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.jetbrains.annotations.NotNull;
-import xyz.xenondevs.invui.item.ItemProvider;
-import xyz.xenondevs.invui.item.builder.ItemBuilder;
-import xyz.xenondevs.invui.item.impl.AbstractItem;
 
-@RequiredArgsConstructor
-public class NotificationSettingsButtonItem extends AbstractItem {
-
-    private final GuiManager guiManager;
-    private final Messages messages;
-
-    @Override
-    public ItemProvider getItemProvider() {
-        return new ItemBuilder(Material.BELL)
-                .setDisplayName(messages.getUiNotificationsItemTitle())
-                .addLoreLines(messages.getUiNotificationsItemDescription());
-    }
-
-    @Override
-    public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent inventoryClickEvent) {
-        guiManager.navigate(player, PluginGuiType.NOTIFICATIONS_GUI);
+public class NotificationSettingsButtonItem extends MenuButton {
+    public NotificationSettingsButtonItem(GuiManager guiManager, Messages messages) {
+        super(new MenuIcon(Material.BELL, messages.getUiNotificationsItemTitle(),
+                List.of(messages.getUiNotificationsItemDescription())),
+                (player, click) -> guiManager.navigate(player, PluginGuiType.NOTIFICATIONS_GUI));
     }
 }

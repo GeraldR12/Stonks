@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Admin Delete Company Command
- * Converted to standard Bukkit API.
  */
 public class AdminDeleteCommand implements MainCommand.SubCommand {
 
@@ -31,9 +30,18 @@ public class AdminDeleteCommand implements MainCommand.SubCommand {
         CompaniesService companiesService = plugin.getCompaniesService();
         PlayersService playersService = plugin.getPlayersService();
 
-        // Check Permissions manually
         if (!player.hasPermission("blockstreet.admin.command.delete")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
+        if (plugin.getTransactionJournal() == null || !plugin.isJournalReady()) {
+            player.sendMessage(messages.getPluginPrefix()
+                    + "Administrative company deletion is temporarily unavailable.");
+            return true;
+        }
+        if (!administrativeDeletionSupported()) {
+            player.sendMessage(messages.getPluginPrefix()
+                    + "Administrative company deletion is disabled until durable settlement is available.");
             return true;
         }
 
@@ -45,6 +53,10 @@ public class AdminDeleteCommand implements MainCommand.SubCommand {
 
         try {
             long companyId = Long.parseLong(args[0]);
+            if (companyId <= 0) {
+                player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
+                return true;
+            }
 
             if (!companiesService.companyExists(companyId)) {
                 player.sendMessage(messages.getPluginPrefix() + messages.getInvalidCompany());
@@ -52,7 +64,10 @@ public class AdminDeleteCommand implements MainCommand.SubCommand {
             }
 
             CompanyDao companyToDelete = companiesService.getCompanyById(companyId);
-            companiesService.deleteCompany(companyId);
+            if (companyToDelete == null || !companiesService.deleteCompany(companyId)) {
+                player.sendMessage(messages.getPluginPrefix() + "Unable to delete company.");
+                return true;
+            }
             playersService.cleanUpInvestmentsForOnlinePlayers(companiesService.getAllCompanies());
 
             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getDeletedCompany(), companyToDelete.getName()));
@@ -62,6 +77,10 @@ public class AdminDeleteCommand implements MainCommand.SubCommand {
         }
 
         return true;
+    }
+
+    private boolean administrativeDeletionSupported() {
+        return false;
     }
 
     @Override

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Player guide
+    url: https://github.com/GeraldR12/Stonks/blob/main/docs/PLAYER_GUIDE.md
+    about: Commands, fees and how prices move.
+  - name: Admin guide
+    url: https://github.com/GeraldR12/Stonks/blob/main/docs/ADMIN_GUIDE.md
+    about: Config, permissions, the server account and stuck trades.

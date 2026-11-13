@@ -38,20 +38,20 @@ public class PlayersRepository implements Repository<UUID, PlayerEntity> {
     }
 
     @Override
-    public void save(PlayerEntity playerToUpdate) {
+    public boolean save(PlayerEntity playerToUpdate) {
 
-        if (!isDataSourceValid()) return;
+        if (!isDataSourceValid() || playerToUpdate == null) return false;
 
-        dataSource.save(DataFilePath.PLAYERS.getFullPathById(playerToUpdate.getUniqueId()), playerToUpdate);
+        return dataSource.save(DataFilePath.PLAYERS.getFullPathById(playerToUpdate.getUniqueId()), playerToUpdate);
 
     }
 
     @Override
-    public void delete(UUID uniqueId) {
+    public boolean delete(UUID uniqueId) {
 
-        if (!isDataSourceValid()) return;
+        if (!isDataSourceValid() || uniqueId == null) return false;
 
-        dataSource.delete(DataFilePath.PLAYERS.getFullPathById(uniqueId.toString()));
+        return dataSource.delete(DataFilePath.PLAYERS.getFullPathById(uniqueId.toString()));
 
     }
 

@@ -10,7 +10,6 @@ import java.util.List;
 
 /**
  * Reload Command
- * Converted to standard Bukkit API via SubCommand interface.
  */
 public class ReloadCommand implements MainCommand.SubCommand {
 
@@ -25,7 +24,6 @@ public class ReloadCommand implements MainCommand.SubCommand {
 
 		Messages messages = plugin.getMessages();
 
-		// Check permission manually
 		if (!player.hasPermission("blockstreet.admin.reload")) {
 			player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
 			return true;
@@ -35,8 +33,13 @@ public class ReloadCommand implements MainCommand.SubCommand {
 		plugin.reloadConfig();
 		messages.reload();
 
-		plugin.stopSchedulers();
-		plugin.registerSchedulers();
+		try {
+			plugin.registerSchedulers();
+		} catch (IllegalArgumentException e) {
+			player.sendMessage(messages.getPluginPrefix() + ChatColor.RED
+					+ "Invalid interest interval; scheduler was not started.");
+			return true;
+		}
 
 		player.sendMessage(messages.getPluginPrefix() + ChatColor.GREEN + messages.getPluginReload());
 		return true;

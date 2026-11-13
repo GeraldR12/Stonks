@@ -25,9 +25,13 @@ public class AdminCreateCommand implements MainCommand.SubCommand {
         Messages messages = plugin.getMessages();
         CompaniesService companiesService = plugin.getCompaniesService();
 
-        // Check Permissions - Use 'player' here
         if (!player.hasPermission("blockstreet.admin.command.create")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
+            return true;
+        }
+        if (!administrativeCreationSupported()) {
+            player.sendMessage(messages.getPluginPrefix()
+                    + "Administrative company creation is disabled until durable settlement is available.");
             return true;
         }
 
@@ -45,10 +49,22 @@ public class AdminCreateCommand implements MainCommand.SubCommand {
             Material companyIcon = null;
             if (args.length >= 5) {
                 companyIcon = Material.matchMaterial(args[4].toUpperCase());
+                if (companyIcon == null) {
+                    player.sendMessage(messages.getPluginPrefix() + "Invalid company icon.");
+                    return true;
+                }
+            }
+            if (companyName.isBlank() || companyRisk <= 0 || companySharesAmount <= 0
+                    || !Double.isFinite(companySharePrice) || companySharePrice <= 0) {
+                player.sendMessage(messages.getPluginPrefix() + "Invalid company values.");
+                return true;
             }
 
-            companiesService.createAdminCompany(companyName, companyRisk, companySharesAmount, companySharePrice, companyIcon);
-            // Use 'player' here
+            if (companiesService.createAdminCompany(companyName, companyRisk, companySharesAmount,
+                    companySharePrice, companyIcon) == null) {
+                player.sendMessage(messages.getPluginPrefix() + "Unable to create company.");
+                return true;
+            }
             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
 
         } catch (NumberFormatException e) {
@@ -56,6 +72,10 @@ public class AdminCreateCommand implements MainCommand.SubCommand {
         }
 
         return true;
+    }
+
+    private boolean administrativeCreationSupported() {
+        return false;
     }
 
     @Override

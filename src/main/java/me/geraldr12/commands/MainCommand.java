@@ -15,16 +15,18 @@ public class MainCommand implements CommandExecutor, TabCompleter {
 
     private final Stonks plugin;
     private final Map<String, SubCommand> subCommands = new HashMap<>();
+    private final DiagnosticsCommand diagnostics;
 
     public MainCommand(Stonks plugin) {
         this.plugin = plugin;
-        // Registering converted logic for each path
+        this.diagnostics = new DiagnosticsCommand(plugin);
         subCommands.put("buy", new BuyCommand(plugin));
         subCommands.put("sell", new SellCommand(plugin));
         subCommands.put("portfolio", new PortfolioCommand(plugin));
         subCommands.put("companies", new CompaniesCommand(plugin));
         subCommands.put("company", new CompanySubCommand(plugin));
         subCommands.put("admin", new AdminSubCommand(plugin));
+        subCommands.put("reconcile", new ReconcileCommand(plugin));
         subCommands.put("reload", new ReloadCommand(plugin));
         subCommands.put("info", new InfoCommand(plugin));
         subCommands.put("help", new HelpCommand(plugin));
@@ -33,6 +35,22 @@ public class MainCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("stonks.use")
+                && !(args.length > 0 && args[0].equalsIgnoreCase("reconcile"))) {
+            sender.sendMessage("You do not have permission to use Stonks commands.");
+            return true;
+        }
+        if (args.length > 0 && args[0].equalsIgnoreCase("reconcile")) {
+            return ((ReconcileCommand) subCommands.get("reconcile")).execute(sender,
+                    Arrays.copyOfRange(args, 1, args.length));
+        }
+        if (args.length > 0 && args[0].equalsIgnoreCase("diagnostics")) {
+            if (!sender.hasPermission("stonks.admin.reconcile")) {
+                sender.sendMessage("You do not have permission to use Stonks diagnostics.");
+                return true;
+            }
+            return diagnostics.execute(sender, Arrays.copyOfRange(args, 1, args.length));
+        }
         if (!(sender instanceof Player)) {
             sender.sendMessage("Only players can use this command.");
             return true;
@@ -42,7 +60,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
 
         // Base command /invest with no args opens global GUI
         if (args.length == 0) {
-            plugin.getGuiManager().navigate(player, PluginGuiType.COMPANIES_GUI);
+            plugin.getGuiManager().navigate(player, PluginGuiType.MAIN_MENU_GUI);
             return true;
         }
 

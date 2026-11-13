@@ -16,7 +16,7 @@ public class CompanyStockUpdateEvent extends Event {
     private final double variation;
 
     public CompanyStockUpdateEvent(CompanyDao company, double oldStockPrice, double newStockPrice, double variation) {
-        super(true);
+        super(false);
         this.company = company;
         this.oldStockPrice = oldStockPrice;
         this.newStockPrice = newStockPrice;

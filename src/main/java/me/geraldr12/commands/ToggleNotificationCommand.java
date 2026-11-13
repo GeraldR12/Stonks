@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Toggle Notifications Command
- * Converted to standard Bukkit API via SubCommand interface.
  */
 public class ToggleNotificationCommand implements MainCommand.SubCommand {
 
@@ -30,7 +29,6 @@ public class ToggleNotificationCommand implements MainCommand.SubCommand {
         Messages messages = plugin.getMessages();
         PlayersService playersService = plugin.getPlayersService();
 
-        // Check permission manually
         if (!player.hasPermission("blockstreet.command.notification")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
             return true;
@@ -43,7 +41,6 @@ public class ToggleNotificationCommand implements MainCommand.SubCommand {
         }
 
         try {
-            // Replaces the custom NotificationTypeArgumentParser
             NotificationType notificationType = NotificationType.valueOf(args[0].toUpperCase());
 
             playersService.toggleNotification(player.getUniqueId(), notificationType);

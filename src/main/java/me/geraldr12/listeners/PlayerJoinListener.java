@@ -6,8 +6,11 @@ import me.geraldr12.api.services.AutoUpdateService;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.utils.Messages;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+
+import java.util.UUID;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
@@ -32,19 +35,39 @@ public class PlayerJoinListener implements Listener {
     @EventHandler
     public void onPlayerJoinEvent(PlayerJoinEvent e) {
         Player joinedPlayer = e.getPlayer();
+        UUID playerId = joinedPlayer.getUniqueId();
+        playersService.rememberName(playerId, joinedPlayer.getName());
 
-        if (stonks.getConfig().getBoolean("Stonks.Updates.Reminder") && (joinedPlayer.isOp() || joinedPlayer.hasPermission("blockstreet.admin.*"))) {
-            autoUpdateService.isUpdateAvailable().thenAcceptAsync((isUpdateAvailable) -> {
-                if (isUpdateAvailable) {
+        if (isReminderEnabled(stonks.getConfig())
+                && (joinedPlayer.isOp() || joinedPlayer.hasPermission("blockstreet.admin.reload"))) {
+            autoUpdateService.isUpdateAvailable().thenAccept(isUpdateAvailable -> {
+                if (isUpdateAvailable && !autoUpdateService.isShuttingDown()) {
                     stonks.getServer().getScheduler().runTaskLater(stonks, () -> {
-                        joinedPlayer.sendMessage(messages.getPluginPrefix() + messages.getNewVersionAvailable());
-                    }, 5000);
+                        Player currentPlayer = stonks.getServer().getPlayer(playerId);
+                        if (stonks.isEnabled() && currentPlayer != null && currentPlayer.isOnline()) {
+                            currentPlayer.sendMessage(messages.getPluginPrefix() + messages.getNewVersionAvailable());
+                        }
+                    }, 100L);
                 }
+            }).exceptionally(error -> {
+                stonks.getLogger().warning("Unable to check for update reminder: " + error.getClass().getSimpleName());
+                return null;
             });
         }
 
         // Clean up investments for the player (remove investments in deleted companies)
         playersService.cleanUpInvestments(joinedPlayer.getUniqueId(), companiesService.getAllCompanies());
+    }
+
+    /**
+     * Older config files used the misspelled key "Remainder". Startup copies the new default
+     * "Reminder: true" into those files, so an explicit legacy "Remainder: false" must still win.
+     */
+    static boolean isReminderEnabled(FileConfiguration config) {
+        boolean reminder = config.getBoolean("Stonks.Updates.Reminder", true);
+        boolean legacyAllows = !config.isSet("Stonks.Updates.Remainder")
+                || config.getBoolean("Stonks.Updates.Remainder");
+        return reminder && legacyAllows;
     }
 
 }

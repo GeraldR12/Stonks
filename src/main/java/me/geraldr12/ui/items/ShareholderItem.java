@@ -1,58 +1,52 @@
 package me.geraldr12.ui.items;
 
-import me.geraldr12.data.dao.InvestmentDao;
+import java.util.List;
+import java.util.UUID;
+import me.geraldr12.Stonks;
+import me.geraldr12.data.entities.PlayerEntity;
+import me.geraldr12.data.repositories.implementations.PlayersRepository;
+import me.geraldr12.ui.menu.MenuButton;
+import me.geraldr12.ui.menu.MenuIcon;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
-import org.jetbrains.annotations.NotNull;
-import xyz.xenondevs.invui.item.builder.ItemBuilder;
-import xyz.xenondevs.invui.item.impl.AbstractItem;
-import xyz.xenondevs.invui.item.ItemProvider;
 
-import java.util.UUID;
-
-public class ShareholderItem extends AbstractItem {
-
-    private final UUID shareholderUuid;
-    private final int sharesOwned;
+public class ShareholderItem extends MenuButton {
+    private final OfflinePlayer shareholder;
 
     public ShareholderItem(UUID shareholderUuid, int sharesOwned) {
-        this.shareholderUuid = shareholderUuid;
-        this.sharesOwned = sharesOwned;
+        this(Bukkit.getOfflinePlayer(shareholderUuid), sharesOwned);
     }
 
-    // Inside ShareholderItem.java
-    @Override
-    public ItemProvider getItemProvider() {
-        org.bukkit.OfflinePlayer offlinePlayer = org.bukkit.Bukkit.getOfflinePlayer(shareholderUuid);
+    private ShareholderItem(OfflinePlayer shareholder, int sharesOwned) {
+        super(new MenuIcon(Material.PLAYER_HEAD,
+                ChatColor.YELLOW + shareholderName(shareholder),
+                List.of(ChatColor.GRAY + "Shares Owned: " + ChatColor.WHITE + sharesOwned)), null);
+        this.shareholder = shareholder;
+    }
 
-        // 1. Create a standard Bukkit ItemStack
-        org.bukkit.inventory.ItemStack skull = new org.bukkit.inventory.ItemStack(org.bukkit.Material.PLAYER_HEAD);
-        org.bukkit.inventory.meta.ItemMeta meta = skull.getItemMeta();
-
-        if (meta instanceof org.bukkit.inventory.meta.SkullMeta) {
-            org.bukkit.inventory.meta.SkullMeta skullMeta = (org.bukkit.inventory.meta.SkullMeta) meta;
-
-            // 2. Set the owner, name, and lore using standard Bukkit methods
-            skullMeta.setOwningPlayer(offlinePlayer);
-            skullMeta.setDisplayName(org.bukkit.ChatColor.YELLOW + (offlinePlayer.getName() != null ? offlinePlayer.getName() : "Unknown Investor"));
-
-            java.util.List<String> lore = new java.util.ArrayList<>();
-            lore.add(org.bukkit.ChatColor.GRAY + "Shares Owned: " + org.bukkit.ChatColor.WHITE + sharesOwned);
-            skullMeta.setLore(lore);
-
-            // 3. Apply the meta back to the stack
-            skull.setItemMeta(skullMeta);
+    private static String shareholderName(OfflinePlayer shareholder) {
+        String offlineName = shareholder.getName();
+        if (offlineName != null) return offlineName;
+        if (Bukkit.getPluginManager().getPlugin("Stonks") instanceof Stonks plugin) {
+            PlayersRepository repository = (PlayersRepository) plugin.getPlayersService().getRepository();
+            return repository.getById(shareholder.getUniqueId()).map(PlayerEntity::getName)
+                    .filter(name -> !name.isBlank() && !name.equalsIgnoreCase("Unknown"))
+                    .orElse("Unknown Investor");
         }
-
-        // 4. Return an ItemBuilder wrapping the finished ItemStack
-        return new ItemBuilder(skull);
+        return "Unknown Investor";
     }
+
     @Override
-    public void handleClick(@NotNull org.bukkit.event.inventory.ClickType clickType, @NotNull org.bukkit.entity.Player player, @NotNull org.bukkit.event.inventory.InventoryClickEvent event) {
-        // Leave empty if you don't want anything to happen when clicking a shareholder
+    public ItemStack createItemStack() {
+        ItemStack item = super.createItemStack();
+        if (item.getItemMeta() instanceof SkullMeta meta) {
+            meta.setOwningPlayer(shareholder);
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 }

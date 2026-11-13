@@ -17,7 +17,6 @@ import java.util.List;
 
 /**
  * Companies command
- * Converted to standard Bukkit API via SubCommand interface.
  */
 public class CompaniesCommand implements MainCommand.SubCommand {
 
@@ -33,7 +32,6 @@ public class CompaniesCommand implements MainCommand.SubCommand {
         Messages messages = plugin.getMessages();
         CompaniesService companiesService = plugin.getCompaniesService();
 
-        // Check permission manually
         if (!player.hasPermission("blockstreet.command.companies")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
             return true;

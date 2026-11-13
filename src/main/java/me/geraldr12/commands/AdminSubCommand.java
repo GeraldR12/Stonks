@@ -21,7 +21,6 @@ public class AdminSubCommand implements MainCommand.SubCommand {
         if (args.length == 0) return false;
 
         String action = args[0].toLowerCase();
-        // create.onCommand now matches the SubCommand interface: (Player, String[])
         if (action.equals("create")) {
             return create.onCommand(player, Arrays.copyOfRange(args, 1, args.length));
         } else if (action.equals("delete")) {

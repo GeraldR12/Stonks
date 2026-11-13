@@ -1,19 +1,32 @@
 Stonks:
   Version: 2.0.0                # Do not change this, it is used for internal purposes
-  InterestInterval: 10
+  InterestInterval: 39          # Minutes between price updates.
+  Shadow:
+    Observation:
+      Enabled: false
+      IntervalMinutes: 10
   Updates:
-    Remainder: true
+    Reminder: true
   StockCrash:
     Enabled: true              # Enable or disable stock crashes.
     Aggressiveness: 0.7        # Value between 0 and 1. A higher value means more frequent crashes.
     RemoveBankrupt: false      # If true, bankrupt companies will automatically be removed from the market.
+  # MarketSensitivity is no longer used; impact now depends on net shares traded.
+  MarketImpactPerShare: 0.00003 # Exponential impact per share, between 0 and 0.01 (1000 shares ~ +3%).
   Taxes:
+    Trading: 0.01              # Fee as a fraction of the gross trade value, 0 <= rate < 0.5. Goes to Treasury.Account if set.
+    TradingMinimum: 1.0        # Minimum fee per trade, must be non-negative.
     CompanyCreation:           # Tax applied when creating company, applied over the valuation, per risk level
       - 0.1                    # Risk 1 (10% of the total valuation)
       - 0.2                    # Risk 2 (20% of the total valuation)
       - 0.3                    # Risk 3 (30% of the total valuation)
       - 0.4                    # Risk 4 (40% of the total valuation)
       - 0.5                    # Risk 5 (50% of the total valuation)
+  Treasury:
+    Account: ""                # Server account that receives trading fees and creation tax (e.g. TNE's Server_Account). Empty: fees leave the economy.
+    BackServerShop: false      # If true, ExcellentShop's /shop pays sellers out of that account and puts purchases into it.
   Limits:
+    MinSharePrice: 30          # Lowest share price allowed when a player creates a company (-1 disables).
+    MaxSharePrice: 50          # Highest share price allowed when a player creates a company (-1 disables).
     MinBalance: 0.1            # Minimum balance a player must have after buying stocks as % of total investment value (defaults to 10 %)
     MaxSharesPerPlayer: 1000   # Maximum number of shares a player can own (set -1 to disable)

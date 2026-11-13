@@ -18,7 +18,6 @@ import java.util.List;
 
 /**
  * Portfolio Command
- * Converted to standard Bukkit API via SubCommand interface.
  */
 public class PortfolioCommand implements MainCommand.SubCommand {
 
@@ -35,7 +34,6 @@ public class PortfolioCommand implements MainCommand.SubCommand {
         PlayersService playersService = plugin.getPlayersService();
         CompaniesService companiesService = plugin.getCompaniesService();
 
-        // Check permission manually
         if (!player.hasPermission("blockstreet.command.portfolio")) {
             player.sendMessage(messages.getPluginPrefix() + messages.getNoPermission());
             return true;
