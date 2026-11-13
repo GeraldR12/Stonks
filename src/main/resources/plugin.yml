@@ -1,6 +1,6 @@
 name: Stonks
 main: me.geraldr12.Stonks
-version: 2.10.2
+version: 2.10.3
 api-version: 1.16
 depend:
   - Vault

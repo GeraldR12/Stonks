@@ -21,7 +21,7 @@ Stonks adds a stock market to Paper servers. Players start companies, buy and se
 
 ## Features
 
-| | |
+| Feature | What you get |
 |---|---|
 | **Player companies** | Anyone can found a company with a name, a risk level from 1 to 5, a share count and a starting price. The founder pays its value plus a creation tax and owns every share. |
 | **A market that moves** | Prices update on a timer (39 minutes by default). Riskier companies swing harder and are more likely to crash, and a company that hits zero goes bankrupt. |
@@ -29,6 +29,7 @@ Stonks adds a stock market to Paper servers. Players start companies, buy and se
 | **Menus or commands** | Everything works from `/invest` chest menus (click to buy 1, 10 or 100) or from commands with tab completion. |
 | **Server account** | Fees and creation tax can go into a server account instead of disappearing. The same account can pay for ExcellentShop's `/shop` and receive Towny's closed economy money. |
 | **Crash safe** | Every trade goes through a journal. If the server stops halfway, the trade is held for staff review and never half applied. |
+| **Price history** | Every price change is saved to a CSV file per company, ready for a spreadsheet. |
 | **Chest shop links** | Company owners can link their QuickShop chest shops to a company. |
 
 ## Quick start
