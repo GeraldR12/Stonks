@@ -17,7 +17,9 @@ import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
@@ -121,31 +123,44 @@ public class SignsListener implements Listener {
     @EventHandler
     public void onSignChanged(SignChangeEvent event) {
         List<String> lines = Arrays.asList(event.getLines());
-        if (lines.get(0) == null) return;
+        if (lines.get(0) == null || !lines.get(0).trim().equalsIgnoreCase("[Stonks]")) return;
 
-        if (lines.get(0).equalsIgnoreCase("[Stonks]")) {
-            List<CompanyDao> allCompanies = companiesService.getAllCompanies();
-            for (CompanyDao company : allCompanies) {
-                if (company.getName().equalsIgnoreCase(lines.get(1))) {
-                    Sign sign = (Sign) event.getBlock().getState();
-                    SignDao signDao = signsService.createSign(company.getId(), sign.getLocation());
-                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> signsService.updateBukkitSignsById(signDao.getId()), 20L);
-                }
-            }
+        Player player = event.getPlayer();
+        String prefix = plugin.getMessages().getPluginPrefix();
+        if (!player.hasPermission("stonks.sign.create")) {
+            player.sendMessage(prefix + ChatColor.RED + "You don't have permission to create Stonks signs.");
+            return;
         }
+        String wanted = lines.size() > 1 && lines.get(1) != null ? lines.get(1).trim() : "";
+        CompanyDao match = companiesService.getAllCompanies().stream()
+                .filter(company -> company.getName().equalsIgnoreCase(wanted))
+                .findFirst().orElse(null);
+        if (match == null) {
+            player.sendMessage(prefix + ChatColor.RED + (wanted.isEmpty()
+                    ? "Write the company name on the second line."
+                    : "No company named \"" + wanted + "\". Check the exact name in /invest companies."));
+            return;
+        }
+        SignDao signDao = signsService.createSign(match.getId(), event.getBlock().getLocation());
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> signsService.updateBukkitSignsById(signDao.getId()), 20L);
     }
 
-    @EventHandler
+    /** Removes the sign's record by its position. The text can't be used: a ticker shows the company name, not "[Stonks]". */
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     public void onSignDestroyed(BlockBreakEvent event) {
         Block destroyedBlock = event.getBlock();
         if (destroyedBlock.getState() instanceof Sign) {
-            Sign sign = (Sign) event.getBlock().getState();
-            if (sign.getLines()[0].contains("Stonks")) {
-                SignDao signDao = signsService.getSignByLocation(destroyedBlock.getLocation());
-                if (signDao != null) {
-                    signsService.deleteSign(signDao.getId());
-                }
-            }
+            signsService.deleteSignsAt(destroyedBlock.getLocation());
         }
+    }
+
+    /** Signs are not refreshed while their chunk is unloaded; bring them up to date when it loads. */
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent event) {
+        List<SignDao> signs = signsService.getSignsInChunk(event.getWorld().getName(),
+                event.getChunk().getX(), event.getChunk().getZ());
+        if (signs.isEmpty()) return;
+        plugin.getServer().getScheduler().runTask(plugin,
+                () -> signs.forEach(sign -> signsService.updateBukkitSignsById(sign.getId())));
     }
 }

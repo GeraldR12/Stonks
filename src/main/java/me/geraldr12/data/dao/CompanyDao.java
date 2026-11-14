@@ -69,6 +69,8 @@ public class CompanyDao implements Dao<CompanyEntity> {
                 .historic(new SizedStack<QuoteDao>(500).fromList(
                         entity.getHistoric().stream()
                                 .map(quote -> (QuoteDao) new QuoteDao().fromEntity(quote))
+                                // Oldest first. Versions up to 2.10.2 could save the list out of order.
+                                .sorted(java.util.Comparator.comparingLong(QuoteDao::getTimestamp))
                                 .collect(Collectors.toList())
                 ))
                 .ownerUuid(entity.getOwnerUuid())

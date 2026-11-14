@@ -51,9 +51,17 @@ public class CreateCommand implements MainCommand.SubCommand {
             int companyRisk = Integer.parseInt(args[1]);
             int companySharesAmount = Integer.parseInt(args[2]);
             double companySharePrice = Double.parseDouble(args[3]);
-            Material companyIcon = args.length >= 5 ? Material.matchMaterial(args[4].toUpperCase()) : null;
+            Material companyIcon = args.length >= 5 ? CompanyInputRules.parseIcon(args[4]) : null;
             if (args.length >= 5 && companyIcon == null) {
-                player.sendMessage(messages.getPluginPrefix() + "Invalid company icon.");
+                player.sendMessage(messages.getPluginPrefix() + CompanyInputRules.badIconMessage(args[4]));
+                return true;
+            }
+            String problem = CompanyInputRules.nameProblem(companyName);
+            if (problem == null) {
+                problem = CompanyInputRules.riskProblem(companyRisk, CompanyInputRules.maxRisk(plugin));
+            }
+            if (problem != null) {
+                player.sendMessage(messages.getPluginPrefix() + problem);
                 return true;
             }
 
@@ -232,7 +240,7 @@ public class CreateCommand implements MainCommand.SubCommand {
             }
 
         } catch (NumberFormatException e) {
-            player.sendMessage(messages.getPluginPrefix() + "Invalid numbers provided for risk, shares, or price.");
+            player.sendMessage(messages.getPluginPrefix() + CompanyInputRules.BAD_NUMBERS);
         }
 
         return true;

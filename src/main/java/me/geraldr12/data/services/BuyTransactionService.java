@@ -96,6 +96,13 @@ public final class BuyTransactionService {
                     if (company.getAvailableShares() != -1 && company.getAvailableShares() < quantity) {
                         return result(BuyTransactionResult.Status.INSUFFICIENT_SHARES, companyId, quantity, null);
                     }
+                    // Check the per-player limit before any money moves, so the player gets a clear refusal
+                    // instead of a charge followed by a refund.
+                    PlayersService players = plugin.getPlayersService();
+                    if (players != null && plugin.getConfig() != null && players.wouldExceedShareLimit(playerId,
+                            companyId, quantity, plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer"))) {
+                        return result(BuyTransactionResult.Status.SHARE_LIMIT_EXCEEDED, companyId, quantity, null);
+                    }
                     double unitPrice = company.getCurrentSharePrice();
                     int fractionalDigits = economy.fractionalDigits();
                     if (fractionalDigits < -1) {

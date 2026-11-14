@@ -2,6 +2,34 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.10.5] - 2026-11-14
+
+### Fixed
+- Breaking a ticker sign left its record behind. The plugin looked for "[Stonks]" on the broken sign, but a ticker shows the company name, so the record was never removed. Records are now removed by position, whatever the sign says. A break cancelled by a protection plugin (Towny, for example) keeps the record.
+- A sign placed where an old one stood got a second record for the same block. Placing a sign now replaces the record at that block, and duplicates left by older versions are cleaned up the first time someone clicks the sign.
+- Updating signs loaded the chunks they were in. Signs in unloaded chunks are now skipped and brought up to date when their chunk loads. A record whose block is no longer a sign (exploded, burnt, replaced) is removed.
+- Clicking any sign, or loading any chunk, read every sign file from disk. The plugin now keeps an in-memory list of sign positions.
+
+### Changed
+- Creating a `[Stonks]` sign needs `stonks.sign.create` (default: everyone). Naming a company that doesn't exist now says so instead of doing nothing.
+- `/invest company create` explains what is wrong: an icon that isn't an item (with example IDs), a risk outside 1 to 5, a name longer than 16 characters (the most a sign line shows), or a name with spaces.
+
+## [2.10.4] - 2026-11-14
+
+### Changed
+- Shares of companies you own no longer count towards `Limits.MaxSharesPerPlayer`. A player who creates a company starts with all of its shares, so a company bigger than the limit used to block its owner from buying anything else.
+
+### Fixed
+- A buy that went over the share limit charged the player and then refunded them ("Purchase could not be completed; your payment was refunded."). The limit is now checked before any money moves, and the message says how many shares you have and how many more you can buy.
+
+## [2.10.3] - 2026-11-13
+
+### Added
+- Price history files: every price change is appended to `plugins/Stonks/history/<companyId>.csv` with the time, the source (`update`, `crash`, `buy`, `sell`), the shares traded, the old and new price and the variation. No player names. Turn it off with `History.Enabled: false`.
+
+### Fixed
+- Each timed update reversed the stored price history, so `/invest company info` showed it out of order and, once a company reached 500 entries, a recent price could be dropped instead of the oldest. History is now kept oldest first, and histories saved out of order by older versions are sorted again when loaded.
+
 ## [2.10.2] - 2026-11-13
 
 ### Fixed
@@ -41,4 +69,5 @@ All notable changes to Stonks. Versions follow [semantic versioning](https://sem
 
 Stonks grew out of [BlockStreet](https://github.com/Hugo1307/BlockStreet). See the repository history for older changes.
 
+[2.10.3]: https://github.com/GeraldR12/Stonks/releases/tag/v2.10.3
 [2.10.2]: https://github.com/GeraldR12/Stonks/releases/tag/v2.10.2

@@ -42,6 +42,7 @@ Player permissions, all `true` by default:
 - `stonks.use`: every `/invest` command.
 - `stonks.command.company`: the `/company` menu.
 - `stonks.command.company.shop`: linking chest shops.
+- `stonks.sign.create`: creating `[Stonks]` ticker signs.
 - `stonks.ui.companies`, `stonks.ui.portfolio`, `stonks.ui.notifications`: the menu pages.
 - `blockstreet.command.company`, `blockstreet.command.companies`, `blockstreet.command.portfolio`, `blockstreet.command.notification`: the matching commands. The `blockstreet` prefix is kept from older versions.
 
@@ -71,10 +72,11 @@ All keys live under `Stonks:` in `plugins/Stonks/config.yml`. Run `/invest reloa
 | `Taxes.CompanyCreation` | `0.1` to `0.5` | Creation tax per risk level, as a fraction of the company's value. |
 | `Treasury.Account` | `""` | Server account that receives fees and creation tax. Empty: that money leaves the economy. See below. |
 | `Treasury.BackServerShop` | `false` | Makes ExcellentShop's `/shop` trade against that account. Needs a restart. See below. |
+| `History.Enabled` | `true` | Writes every price change to `history/<companyId>.csv`. See Files. |
 | `Limits.MinSharePrice` | `30` | Lowest starting share price when a player creates a company. `-1` turns it off. |
 | `Limits.MaxSharePrice` | `50` | Highest starting share price. `-1` turns it off. |
 | `Limits.MinBalance` | `0.1` | Not enforced yet. |
-| `Limits.MaxSharesPerPlayer` | `1000` | Most shares one player can hold across all companies. `-1` turns it off. |
+| `Limits.MaxSharesPerPlayer` | `1000` | Most shares one player can hold across companies they don't own. Shares of their own companies don't count. `-1` turns it off. |
 
 ### How prices behave
 Each update moves every company's price by a random step. A company with risk `r` and starting price `p` stays roughly between `p × 0.6 / r` and `p × 3 × r`. Near the bottom it can crash, and a company at zero is bankrupt and can't be traded.
@@ -139,5 +141,7 @@ In this version acknowledging records the review but keeps the player paused. Au
 - `plugins/Stonks/transactions/`: the journal.
 - `plugins/Stonks/treasury/ledger.yml`: the server account ledger.
 - `plugins/Stonks/shops/links.yml`: chest shop links.
+- `plugins/Stonks/signs/<id>.yml`: one file per ticker sign (company and position). Signs in unloaded chunks are updated when the chunk loads. Since 2.10.5, breaking a sign removes its file, and a file whose block is no longer a sign is removed the next time it updates.
+- `plugins/Stonks/history/<id>.csv`: every price change of that company, one line each, oldest first. Columns: `time_utc`, `company_id`, `company_name`, `risk`, `source` (`update` for the timed change, `crash`, `buy` or `sell` for the move a trade caused), `shares` (trades only), `old_price`, `new_price`, `variation` (0.01 is +1%). It opens in Excel or Google Sheets. A company adds about 37 lines a day, so the files stay small. Deleting a file only loses that history; nothing else reads it.
 
 Back up the whole `plugins/Stonks/` folder with the rest of the server.

@@ -56,13 +56,13 @@ The fee is 1% of the trade with a minimum of 1 gold (your server may use differe
 
 Each trade also moves the price a little in the direction you traded: buying pushes it up, selling pushes it down. A big order gets the average price across that move, not the price before it. Because of this and the fee, buying and selling straight away always loses a bit. You make money only when the market moves your way.
 
-You can't own more than 1000 shares in total across all companies (servers can change this).
+You can't own more than 1000 shares in total across companies you don't own (servers can change this). Shares of your own companies don't count, so creating a big company never stops you from investing elsewhere.
 
 Messages you might see:
 - "You do not have enough money. You need X to do that." You're short on gold for the shares plus the fee.
 - "You don't have enough stocks." You tried to sell more than you own.
 - "This company doesn't have enough stocks to sell." The company has fewer free shares than you asked for.
-- "You cannot own more than X shares in total." You hit the share limit.
+- "You can own at most X shares of companies you don't own ... Nothing was charged." You hit the share limit. The message says how many more you can buy.
 - "You cannot buy stocks from a bankrupt company."
 - "This sale is too small ..." The sale is worth less than the fee.
 - "Trading is paused ... Nothing was charged." A trade of yours was interrupted earlier (a crash or a restart in the middle of it) and staff need to look at it first. Your gold and shares are safe. Ask a staff member.
@@ -84,17 +84,26 @@ Prices can also crash. A company whose price reaches zero is bankrupt: its share
 /invest company create <name> <risk> <shares> <price> [icon]
 ```
 
-- `name`: must be unique (case and spaces don't count, so `Acme` and ` acme ` are the same).
+- `name`: one word, up to 16 characters. Use `_` instead of spaces (`Bank_Corp`). It must be unique (case doesn't count, so `Acme` and `acme` are the same).
 - `risk`: 1 to 5.
 - `shares`: how many shares the company has.
 - `price`: starting price per share. On this server it must be between 30 and 50.
-- `icon`: optional item name for the menu, like `DIAMOND`.
+- `icon`: optional item ID for the menu, like `DIAMOND`, `GOLD_INGOT` or `WHEAT`. Press F3+H in game and hover over an item to see its ID.
 
 You pay the company's value (shares times price) plus a creation tax of 10% for risk 1, 20% for risk 2, and so on up to 50% for risk 5. The tax goes to the server account. You then own all the shares and can sell them to the market whenever you want, like any other shares.
 
 Example: `/invest company create Acme 1 10 40` costs 400 for the shares plus 40 tax, so 440 in total.
 
 To close a company you must own all of its shares. `/invest company delete <id>` (or the button in My Companies) pays you the current value of all shares and removes the company. A bankrupt company is worth nothing, so deleting it pays nothing and is refused.
+
+## Ticker signs
+
+A ticker sign shows a company's name, price, last change and status, and updates with the market.
+
+1. Place a sign.
+2. Write `[Stonks]` on the first line and the company's exact name on the second line.
+
+Right-click the sign to see the company's details and your shares, with buttons to buy or sell. Break the sign to remove it. If the name doesn't match a company, the sign stays a normal sign and you get a message telling you so.
 
 ## Linking chest shops
 

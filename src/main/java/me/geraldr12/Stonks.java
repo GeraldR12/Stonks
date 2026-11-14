@@ -8,6 +8,7 @@ import me.geraldr12.integration.CommerceActivityCollector;
 import me.geraldr12.integration.ShopLookup;
 import me.geraldr12.integration.ServerShopBridge;
 import me.geraldr12.data.services.ShopLinksService;
+import me.geraldr12.data.services.PriceHistoryLog;
 import me.geraldr12.data.services.TreasuryService;
 import me.geraldr12.economy.VaultTreasuryGateway;
 import me.geraldr12.listeners.ShopLinksListener;
@@ -59,6 +60,7 @@ public class Stonks extends JavaPlugin {
     @Getter private ShopLookup shopLookup;
     @Getter private ShopLinksService shopLinksService;
     @Getter private TreasuryService treasuryService;
+    @Getter private PriceHistoryLog priceHistoryLog;
     private ShopLinksListener shopLinksListener;
     private ShadowObservation shadowObservation;
 
@@ -135,6 +137,8 @@ public class Stonks extends JavaPlugin {
         treasuryService = new TreasuryService(new VaultTreasuryGateway(this),
                 getDataFolder().toPath().resolve("treasury").resolve("ledger.yml"));
         treasuryService.flush();
+        priceHistoryLog = new PriceHistoryLog(getDataFolder().toPath().resolve("history"),
+                () -> getConfig().getBoolean("Stonks.History.Enabled", true));
         shopLinksService = new ShopLinksService(getDataFolder().toPath().resolve("shops").resolve("links.yml"));
         shopLinksListener = new ShopLinksListener(shopLinksService);
         townFundamentalsSnapshotService = new TownFundamentalsSnapshotService(

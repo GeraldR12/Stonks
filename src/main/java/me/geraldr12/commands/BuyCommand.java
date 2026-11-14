@@ -42,7 +42,9 @@ public class BuyCommand implements MainCommand.SubCommand {
                 return true;
             }
             BuyTransactionResult result = transactions.execute(player.getUniqueId(), player, companyId, shares);
-            player.sendMessage(plugin.getMessages().getPluginPrefix() + message(result));
+            player.sendMessage(plugin.getMessages().getPluginPrefix()
+                    + (result.status() == BuyTransactionResult.Status.SHARE_LIMIT_EXCEEDED
+                    ? shareLimitMessage(player) : message(result)));
             return true;
         } catch (NumberFormatException e) {
             player.sendMessage(plugin.getMessages().getPluginPrefix() + "Error: ID and Amount must be numbers.");
@@ -50,8 +52,17 @@ public class BuyCommand implements MainCommand.SubCommand {
         }
     }
 
+    private String shareLimitMessage(Player player) {
+        int max = plugin.getConfig().getInt("Stonks.Limits.MaxSharesPerPlayer");
+        long counted = plugin.getPlayersService().getSharesCountedTowardsLimit(player.getUniqueId());
+        long room = Math.max(0, max - counted);
+        return "You can own at most " + max + " shares of companies you don't own, and you have " + counted
+                + ". You can buy " + room + " more. Shares of your own companies don't count. Nothing was charged.";
+    }
+
     private String message(BuyTransactionResult result) {
         return switch (result.status()) {
+            case SHARE_LIMIT_EXCEEDED -> "You've reached the share limit. Nothing was charged.";
             case SUCCESS -> MessageFormat.format(plugin.getMessages().getBoughtActions(), result.quantity());
             case VALIDATION_REJECTED -> plugin.getMessages().getInvalidCompany();
             case INSUFFICIENT_FUNDS -> MessageFormat.format(plugin.getMessages().getInsufficientMoney(),

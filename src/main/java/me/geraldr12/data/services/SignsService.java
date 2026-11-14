@@ -12,10 +12,14 @@ import me.geraldr12.utils.VisualizationUtils;
 import lombok.extern.log4j.Log4j2;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.block.Sign;
 
 import javax.inject.Inject;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -47,6 +51,9 @@ public class SignsService implements Service {
 
     public SignDao createSign(long companyId, Location signLocation) {
 
+        // One sign per block: a sign placed where an old one was replaces its record.
+        deleteSignsAt(signLocation);
+
         SignDao signDao = SignDao.builder()
                 .id(repository.getNextId().intValue())
                 .companyId(companyId)
@@ -54,6 +61,7 @@ public class SignsService implements Service {
                 .build();
 
         repository.save(signDao.toEntity());
+        invalidateIndex();
 
         return signDao;
 
@@ -61,17 +69,102 @@ public class SignsService implements Service {
 
     public void deleteSign(int signId) {
         repository.getById(signId).ifPresent(signEntity -> repository.delete(signEntity.getId()));
+        invalidateIndex();
     }
 
+    /** The sign registered at this block. If older versions left duplicates, the newest is kept and the rest removed. */
     public SignDao getSignByLocation(Location location) {
-
-        return getAllSigns().stream()
-                .filter(signDao -> signDao.getLocation().toBukkitLocation().equals(location))
-                .findFirst()
-                .orElse(null);
-
+        if (location == null || location.getWorld() == null) return null;
+        List<SignDao> here = getSignsAtBlock(location.getWorld().getName(),
+                location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        if (here.isEmpty()) return null;
+        SignDao newest = here.stream().max(Comparator.comparingInt(SignDao::getId)).get();
+        here.stream().filter(sign -> sign.getId() != newest.getId()).forEach(sign -> deleteSign(sign.getId()));
+        return newest;
     }
 
+    // In-memory index of where signs are, so chunk loads and clicks on ordinary signs never read the sign files.
+    private Set<String> blockIndex;
+    private Set<String> chunkIndex;
+
+    private static String blockKey(String world, int x, int y, int z) {
+        return world + ':' + x + ':' + y + ':' + z;
+    }
+
+    private static String chunkKey(String world, int chunkX, int chunkZ) {
+        return world + ':' + chunkX + ':' + chunkZ;
+    }
+
+    private synchronized void ensureIndex() {
+        if (blockIndex != null) return;
+        Set<String> blocks = new HashSet<>();
+        Set<String> chunks = new HashSet<>();
+        for (SignDao sign : getAllSigns()) {
+            LocationDao l = sign.getLocation();
+            if (l == null) continue;
+            blocks.add(blockKey(l.getWorld(), (int) Math.floor(l.getX()), (int) Math.floor(l.getY()), (int) Math.floor(l.getZ())));
+            chunks.add(chunkKey(l.getWorld(), blockToChunk(l.getX()), blockToChunk(l.getZ())));
+        }
+        blockIndex = blocks;
+        chunkIndex = chunks;
+    }
+
+    private synchronized void invalidateIndex() {
+        blockIndex = null;
+        chunkIndex = null;
+    }
+
+    public synchronized boolean hasSignAt(String world, int x, int y, int z) {
+        ensureIndex();
+        return blockIndex.contains(blockKey(world, x, y, z));
+    }
+
+    public synchronized boolean hasSignsInChunk(String world, int chunkX, int chunkZ) {
+        ensureIndex();
+        return chunkIndex.contains(chunkKey(world, chunkX, chunkZ));
+    }
+
+    public List<SignDao> getSignsAtBlock(String world, int x, int y, int z) {
+        if (!hasSignAt(world, x, y, z)) return List.of();
+        return getAllSigns().stream()
+                .filter(sign -> sameBlock(sign.getLocation(), world, x, y, z))
+                .collect(Collectors.toList());
+    }
+
+    /** Removes every sign registered at this block, whatever is written on it. Returns how many were removed. */
+    public int deleteSignsAt(Location location) {
+        if (location == null || location.getWorld() == null) return 0;
+        List<SignDao> here = getSignsAtBlock(location.getWorld().getName(),
+                location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        here.forEach(sign -> deleteSign(sign.getId()));
+        return here.size();
+    }
+
+    public List<SignDao> getSignsInChunk(String world, int chunkX, int chunkZ) {
+        if (!hasSignsInChunk(world, chunkX, chunkZ)) return List.of();
+        return getAllSigns().stream()
+                .filter(sign -> sign.getLocation() != null && Objects.equals(sign.getLocation().getWorld(), world)
+                        && blockToChunk(sign.getLocation().getX()) == chunkX
+                        && blockToChunk(sign.getLocation().getZ()) == chunkZ)
+                .collect(Collectors.toList());
+    }
+
+    static boolean sameBlock(LocationDao location, String world, int x, int y, int z) {
+        return location != null && Objects.equals(location.getWorld(), world)
+                && (int) Math.floor(location.getX()) == x
+                && (int) Math.floor(location.getY()) == y
+                && (int) Math.floor(location.getZ()) == z;
+    }
+
+    static int blockToChunk(double coordinate) {
+        return ((int) Math.floor(coordinate)) >> 4;
+    }
+
+    /**
+     * The sign block for this record, or null. Never loads a chunk: signs in unloaded chunks are skipped and
+     * refreshed when their chunk loads. A record whose block is no longer a sign (exploded, burnt, replaced)
+     * is removed.
+     */
     public Sign getBukkitSignFromId(int id) {
 
         if (!repository.exists(id)) return null;
@@ -82,11 +175,15 @@ public class SignsService implements Service {
 
         SignDao signDao = (SignDao) new SignDao().fromEntity(signEntityOptional.get());
         Location signLocation = signDao.getLocation().toBukkitLocation();
+        World world = signLocation.getWorld();
+        if (world == null) return null;
+        if (!world.isChunkLoaded(blockToChunk(signLocation.getX()), blockToChunk(signLocation.getZ()))) return null;
 
-        if (signLocation.getBlock().getState() instanceof Sign) {
-            return (Sign) signLocation.getBlock().getState();
+        if (signLocation.getBlock().getState() instanceof Sign sign) {
+            return sign;
         }
 
+        deleteSign(id);
         return null;
 
     }

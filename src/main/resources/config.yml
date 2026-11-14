@@ -25,8 +25,10 @@ Stonks:
   Treasury:
     Account: ""                # Server account that receives trading fees and creation tax (e.g. TNE's Server_Account). Empty: fees leave the economy.
     BackServerShop: false      # If true, ExcellentShop's /shop pays sellers out of that account and puts purchases into it.
+  History:
+    Enabled: true              # Appends every price change to plugins/Stonks/history/<companyId>.csv (no player names).
   Limits:
     MinSharePrice: 30          # Lowest share price allowed when a player creates a company (-1 disables).
     MaxSharePrice: 50          # Highest share price allowed when a player creates a company (-1 disables).
     MinBalance: 0.1            # Minimum balance a player must have after buying stocks as % of total investment value (defaults to 10 %)
-    MaxSharesPerPlayer: 1000   # Maximum number of shares a player can own (set -1 to disable)
+    MaxSharesPerPlayer: 1000   # Maximum shares a player can own in companies they do not own; own companies do not count (-1 disables)

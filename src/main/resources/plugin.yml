@@ -1,6 +1,6 @@
 name: Stonks
 main: me.geraldr12.Stonks
-version: 2.10.2
+version: 2.10.5
 api-version: 1.16
 depend:
   - Vault
@@ -31,6 +31,9 @@ permissions:
     default: true
   stonks.command.company.shop:
     description: Link your chest shops to your companies.
+    default: true
+  stonks.sign.create:
+    description: Create [Stonks] ticker signs.
     default: true
   stonks.ui.companies:
     description: Access the companies GUI.

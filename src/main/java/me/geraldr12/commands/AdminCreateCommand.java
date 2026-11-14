@@ -48,11 +48,19 @@ public class AdminCreateCommand implements MainCommand.SubCommand {
 
             Material companyIcon = null;
             if (args.length >= 5) {
-                companyIcon = Material.matchMaterial(args[4].toUpperCase());
+                companyIcon = CompanyInputRules.parseIcon(args[4]);
                 if (companyIcon == null) {
-                    player.sendMessage(messages.getPluginPrefix() + "Invalid company icon.");
+                    player.sendMessage(messages.getPluginPrefix() + CompanyInputRules.badIconMessage(args[4]));
                     return true;
                 }
+            }
+            String problem = CompanyInputRules.nameProblem(companyName);
+            if (problem == null) {
+                problem = CompanyInputRules.riskProblem(companyRisk, CompanyInputRules.maxRisk(plugin));
+            }
+            if (problem != null) {
+                player.sendMessage(messages.getPluginPrefix() + problem);
+                return true;
             }
             if (companyName.isBlank() || companyRisk <= 0 || companySharesAmount <= 0
                     || !Double.isFinite(companySharePrice) || companySharePrice <= 0) {
@@ -68,7 +76,8 @@ public class AdminCreateCommand implements MainCommand.SubCommand {
             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
 
         } catch (NumberFormatException e) {
-            player.sendMessage(messages.getPluginPrefix() + "Error: Risk, shares, and price must be numbers.");
+            player.sendMessage(messages.getPluginPrefix() + CompanyInputRules.BAD_NUMBERS.replace(
+                    "/invest company create", "/invest admin create"));
         }
 
         return true;

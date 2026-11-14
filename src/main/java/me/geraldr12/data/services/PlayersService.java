@@ -117,13 +117,7 @@ public class PlayersService implements Service {
             if (afterQuantity > Integer.MAX_VALUE) {
                 return ShareMutationResult.rejected(operation, playerId, companyId, quantity, "share arithmetic overflow");
             }
-            long totalAfter;
-            try {
-                totalAfter = Math.addExact(getTotalPlayerSharesCount(playerId), (long) quantity);
-            } catch (ArithmeticException e) {
-                return ShareMutationResult.rejected(operation, playerId, companyId, quantity, "share limit arithmetic overflow");
-            }
-            if (maxSharesPerPlayer > 0 && totalAfter > maxSharesPerPlayer) {
+            if (wouldExceedShareLimit(playerId, companyId, quantity, maxSharesPerPlayer)) {
                 return ShareMutationResult.rejected(operation, playerId, companyId, quantity, "player share limit exceeded");
             }
             double afterPrice;
@@ -319,6 +313,33 @@ public class PlayersService implements Service {
         return getOrCreatePlayer(playerId).getInvestments().stream()
                 .mapToLong(InvestmentDao::getSharesAmount)
                 .sum();
+    }
+
+    /**
+     * Shares that count towards {@code Limits.MaxSharesPerPlayer}. Shares of companies the player owns
+     * are left out: an owner starts with every share of their company and must still be able to invest elsewhere.
+     */
+    public long getSharesCountedTowardsLimit(UUID playerId) {
+        return getOrCreatePlayer(playerId).getInvestments().stream()
+                .filter(investment -> !ownsCompany(playerId, investment.getCompanyId()))
+                .mapToLong(InvestmentDao::getSharesAmount)
+                .sum();
+    }
+
+    public boolean ownsCompany(UUID playerId, long companyId) {
+        if (playerId == null || plugin == null) return false;
+        CompaniesService companies = plugin.getCompaniesService();
+        if (companies == null) return false;
+        CompanyDao company = companies.getCompanyById(companyId);
+        return company != null && company.getOwnerUuid() != null
+                && playerId.toString().equalsIgnoreCase(company.getOwnerUuid());
+    }
+
+    /** True when buying {@code quantity} more shares of {@code companyId} would break the per-player limit. */
+    public boolean wouldExceedShareLimit(UUID playerId, long companyId, int quantity, int maxSharesPerPlayer) {
+        if (maxSharesPerPlayer <= 0 || quantity <= 0 || ownsCompany(playerId, companyId)) return false;
+        long counted = getSharesCountedTowardsLimit(playerId);
+        return counted > maxSharesPerPlayer - (long) quantity;
     }
 
     public double getTotalPortfolioValue(UUID playerId, CompaniesService companiesService) {

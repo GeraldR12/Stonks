@@ -55,6 +55,24 @@ class BuyTransactionRejectionTest {
     }
 
     @Test
+    void shareLimitRejectsBeforeAnyMoneyMoves() {
+        Fixture fixture = new Fixture();
+        PlayersService players = mock(PlayersService.class);
+        org.bukkit.configuration.file.FileConfiguration config = mock(org.bukkit.configuration.file.FileConfiguration.class);
+        when(fixture.plugin.getPlayersService()).thenReturn(players);
+        when(fixture.plugin.getConfig()).thenReturn(config);
+        when(config.getInt("Stonks.Limits.MaxSharesPerPlayer")).thenReturn(1000);
+        when(players.wouldExceedShareLimit(fixture.playerId, 7, 2, 1000)).thenReturn(true);
+
+        BuyTransactionResult result = fixture.execute(2);
+
+        assertEquals(BuyTransactionResult.Status.SHARE_LIMIT_EXCEEDED, result.status());
+        assertNull(result.transactionId());
+        fixture.verifyNoMutation();
+        verify(fixture.economy, never()).has(any(), anyDouble());
+    }
+
+    @Test
     void unlimitedSharesReachFundsValidation() {
         Fixture fixture = new Fixture();
         when(fixture.company.getAvailableShares()).thenReturn(-1);

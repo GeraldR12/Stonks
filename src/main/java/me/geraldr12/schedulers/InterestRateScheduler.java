@@ -4,6 +4,7 @@ import me.geraldr12.Stonks;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.dao.QuoteDao;
 import me.geraldr12.data.services.CompaniesService;
+import me.geraldr12.data.services.PriceHistoryLog;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.data.services.SignsService;
 import me.geraldr12.enums.NotificationType;
@@ -19,6 +20,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import javax.inject.Inject;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.List;
 
 public class InterestRateScheduler extends BukkitRunnable {
@@ -105,7 +107,7 @@ public class InterestRateScheduler extends BukkitRunnable {
 
                 SizedStack<QuoteDao> history = current.getHistoric() == null
                         ? new SizedStack<>(500)
-                        : current.getHistoric().fromList(current.getHistoric().toList());
+                        : current.getHistoric().fromList(new ArrayList<>(current.getHistoric())); // oldest first, as stored
                 history.push(new QuoteDao(newSharesQuote, newSharePrice, System.currentTimeMillis()));
                 CompanyDao snapshot = CompanyDao.builder()
                         .id(current.getId())
@@ -128,6 +130,11 @@ public class InterestRateScheduler extends BukkitRunnable {
                 completedCompany = snapshot;
                 bankrupt = snapshot.isBankrupt();
             }
+
+            PriceHistoryLog.record(plugin.getPriceHistoryLog(), completedCompany.getId(), completedCompany.getName(),
+                    completedCompany.getRisk(), bankrupt ? PriceHistoryLog.Source.CRASH : PriceHistoryLog.Source.UPDATE,
+                    0, oldSharePrice, newSharePrice,
+                    oldSharePrice > 0 ? (newSharePrice - oldSharePrice) / oldSharePrice : 0);
 
             if (plugin.getServer() != null && plugin.getServer().getPluginManager() != null) {
                 plugin.getServer().getPluginManager().callEvent(new CompanyStockUpdateEvent(
