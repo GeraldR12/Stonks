@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Stonks: a stock market for your Minecraft server">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111b2e"/>
+    </linearGradient>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22c55e" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1e2a40" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="400" fill="url(#bg)"/>
+  <rect width="1280" height="400" fill="url(#grid)" opacity="0.6"/>
+
+  <!-- price chart -->
+  <path d="M640 330 L700 300 L750 312 L800 262 L850 276 L900 220 L950 238 L1000 180 L1050 196 L1100 140 L1150 158 L1200 104 L1260 84 L1260 400 L640 400 Z" fill="url(#area)"/>
+  <path d="M640 330 L700 300 L750 312 L800 262 L850 276 L900 220 L950 238 L1000 180 L1050 196 L1100 140 L1150 158 L1200 104 L1260 84" fill="none" stroke="#22c55e" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="1260" cy="84" r="9" fill="#22c55e"/>
+  <circle cx="1260" cy="84" r="18" fill="#22c55e" opacity="0.25"/>
+
+  <!-- candles -->
+  <g opacity="0.9">
+    <rect x="686" y="268" width="12" height="40" rx="2" fill="#22c55e"/><rect x="691" y="258" width="2" height="60" fill="#22c55e"/>
+    <rect x="786" y="250" width="12" height="34" rx="2" fill="#ef4444"/><rect x="791" y="240" width="2" height="54" fill="#ef4444"/>
+    <rect x="886" y="206" width="12" height="44" rx="2" fill="#22c55e"/><rect x="891" y="194" width="2" height="66" fill="#22c55e"/>
+    <rect x="986" y="168" width="12" height="36" rx="2" fill="#22c55e"/><rect x="991" y="156" width="2" height="58" fill="#22c55e"/>
+    <rect x="1086" y="130" width="12" height="30" rx="2" fill="#ef4444"/><rect x="1091" y="118" width="2" height="52" fill="#ef4444"/>
+    <rect x="1186" y="96" width="12" height="40" rx="2" fill="#22c55e"/><rect x="1191" y="84" width="2" height="62" fill="#22c55e"/>
+  </g>
+
+  <!-- gold ingot mark -->
+  <g transform="translate(80 76)">
+    <path d="M0 52 L18 18 H82 L100 52 Z" fill="#f5b301"/>
+    <path d="M18 18 H82 L72 0 H28 Z" fill="#ffd54a"/>
+    <path d="M0 52 H100 L94 62 H6 Z" fill="#c98a00"/>
+  </g>
+
+  <text x="80" y="250" fill="#f8fafc" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="96" font-weight="800" letter-spacing="-2">Stonks</text>
+  <text x="84" y="300" fill="#94a3b8" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="28">A stock market for your Minecraft server</text>
+  <text x="84" y="342" fill="#22c55e" font-family="Consolas, Menlo, monospace" font-size="22">/invest</text>
+</svg>

@@ -1,0 +1,32 @@
+package me.geraldr12.data.entities;
+
+import lombok.Data;
+import org.bukkit.Material;
+
+import java.util.List;
+
+@Data
+public class CompanyEntity implements DataEntity {
+
+    private int id;
+    private String name;
+    private String description;
+    private Material icon;
+    private double initialSharePrice;
+    private double currentSharePrice;
+    private int risk;
+    private int totalShares;
+    private int availableShares;
+    private List<QuoteEntity> historic;
+    private String ownerUuid; // The UUID of the player who owns this company
+    private boolean bankrupt;
+
+    public boolean isBankrupt() {
+        return bankrupt;
+    }
+
+    public void setBankrupt(boolean bankrupt) {
+        this.bankrupt = bankrupt;
+    }
+
+}

@@ -1,0 +1,20 @@
+name: Feature request
+description: An idea for Stonks.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe what players or staff are trying to do and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could Stonks help?
+  - type: textarea
+    id: economy
+    attributes:
+      label: Effect on the economy
+      description: Could this create gold, remove gold, or be farmed? Ideas that keep the economy closed are much easier to accept.
