@@ -9,11 +9,7 @@ import org.bukkit.Material;
 
 public class CreateCompanyButtonItem extends MenuButton {
     public CreateCompanyButtonItem(GuiManager guiManager, Messages messages) {
-        super(new MenuIcon(Material.ANVIL, "§a§lCreate New Company",
-                List.of("§7Click to start creating", "§7your own stock company!")), (player, click) -> {
-            guiManager.close(player);
-            player.sendMessage(messages.getPluginPrefix()
-                    + "§7Use §e/invest company create <name> <risk> <shares> <price> §7to create your company!");
-        });
+        super(new MenuIcon(Material.ANVIL, messages.getMessageByKey("uiCreateButton"), List.of()),
+                (player, click) -> guiManager.openCompanyCreation(player));
     }
 }

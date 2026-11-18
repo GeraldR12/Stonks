@@ -31,10 +31,7 @@ public class MainMenuGui extends AbstractPluginGui {
                 (who, click) -> guiManager.navigate(who, PluginGuiType.PORTFOLIO_GUI)));
         buttons.put('c', navigation(Material.CHEST, "uiMainCompanies", PluginGuiType.PLAYER_COMPANIES_GUI));
         buttons.put('n', navigation(Material.BELL, "uiMainNotifications", PluginGuiType.NOTIFICATIONS_GUI));
-        buttons.put('h', new MenuButton(new MenuIcon(Material.BOOK, messages.getMessageByKey("uiMainHelp"),
-                List.of(messages.getMessageByKey("uiMainHelpBuy"), messages.getMessageByKey("uiMainHelpSell"),
-                        messages.getMessageByKey("uiMainHelpPortfolio"), messages.getMessageByKey("uiMainHelpCompanies"),
-                        messages.getMessageByKey("uiMainHelpCreate"), messages.getMessageByKey("uiMainHelpDelete"))), null));
+        buttons.put('h', navigation(Material.BOOK, "uiMainHelp", PluginGuiType.GUIDE_GUI));
         buttons.put('q', new MenuButton(new MenuIcon(Material.BARRIER, messages.getMessageByKey("uiMainClose"), List.of()),
                 (who, click) -> guiManager.close(who)));
         return new PagedLayout(new String[]{

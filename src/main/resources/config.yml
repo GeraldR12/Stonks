@@ -10,7 +10,7 @@ Stonks:
   StockCrash:
     Enabled: true              # Enable or disable stock crashes.
     Aggressiveness: 0.7        # Value between 0 and 1. A higher value means more frequent crashes.
-    RemoveBankrupt: false      # If true, bankrupt companies will automatically be removed from the market.
+    RemoveBankrupt: false      # Legacy key. Bankrupt companies are archived for review.
   # MarketSensitivity is no longer used; impact now depends on net shares traded.
   MarketImpactPerShare: 0.00003 # Exponential impact per share, between 0 and 0.01 (1000 shares ~ +3%).
   Taxes:

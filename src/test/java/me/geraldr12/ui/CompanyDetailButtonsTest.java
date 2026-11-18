@@ -2,7 +2,6 @@ package me.geraldr12.ui;
 
 import java.util.List;
 import java.util.UUID;
-import me.geraldr12.commands.MainCommand.SubCommand;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.dao.InvestmentDao;
 import me.geraldr12.data.services.CompaniesService;
@@ -17,7 +16,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static org.mockito.AdditionalMatchers.aryEq;
 
 class CompanyDetailButtonsTest {
     private final GuiManager manager = mock(GuiManager.class);
@@ -25,8 +23,6 @@ class CompanyDetailButtonsTest {
     private final CompaniesService companies = mock(CompaniesService.class);
     private final PlayersService players = mock(PlayersService.class);
     private final Player player = mock(Player.class);
-    private final SubCommand buy = mock(SubCommand.class);
-    private final SubCommand sell = mock(SubCommand.class);
     private final UUID playerId = UUID.randomUUID();
     private final CompanyDao company = CompanyDao.builder().id(42).name("Example")
             .initialSharePrice(5).currentSharePrice(5).risk(2).availableShares(100)
@@ -38,7 +34,7 @@ class CompanyDetailButtonsTest {
         when(manager.getPlayersService()).thenReturn(players);
         when(companies.getCompanyById(42)).thenReturn(company);
         when(players.getInvestments(playerId)).thenReturn(List.of(new InvestmentDao(42, shares, 5)));
-        return new CompanyDetailGui(player, manager, messages, 42, buy, sell);
+        return new CompanyDetailGui(player, manager, messages, 42);
     }
 
     @Test
@@ -54,31 +50,30 @@ class CompanyDetailButtonsTest {
     }
 
     @Test
-    void purchasesPassTheCompanyAndExactQuantitiesToTheCommand() {
+    void purchasesOpenTheExactQuote() {
         var buttons = gui(0).build().getPage(0);
         for (int slot : new int[]{10, 11, 12}) buttons.get(slot).getAction().accept(player, ClickType.LEFT);
-        for (String quantity : new String[]{"1", "10", "100"}) {
-            verify(buy).onCommand(eq(player), aryEq(new String[]{"42", quantity}));
+        for (int quantity : new int[]{1, 10, 100}) {
+            verify(manager).openTradeQuote(player, 42, quantity, true);
         }
-        verifyNoInteractions(sell);
     }
 
     @Test
-    void salesUseCommandsAndSellAllReadsFreshHoldings() {
+    void salesOpenQuotesAndSellAllReadsFreshHoldings() {
         CompanyDetailGui gui = gui(12);
         var buttons = gui.build().getPage(0);
         buttons.get(28).getAction().accept(player, ClickType.LEFT);
         buttons.get(29).getAction().accept(player, ClickType.LEFT);
         when(players.getInvestments(playerId)).thenReturn(List.of(new InvestmentDao(42, 7, 5)));
         buttons.get(30).getAction().accept(player, ClickType.LEFT);
-        for (String quantity : new String[]{"1", "10", "7"}) {
-            verify(sell).onCommand(eq(player), aryEq(new String[]{"42", quantity}));
+        for (int quantity : new int[]{1, 10, 7}) {
+            verify(manager).openTradeQuote(player, 42, quantity, false);
         }
         when(players.getInvestments(playerId)).thenReturn(List.of());
         assertFalse(gui.build().getPage(0).containsKey(28));
         assertFalse(gui.build().getPage(0).containsKey(30));
         buttons.get(30).getAction().accept(player, ClickType.LEFT);
-        verifyNoMoreInteractions(sell);
+        verify(manager, times(3)).openTradeQuote(eq(player), eq(42L), anyInt(), eq(false));
     }
 
     @Test
@@ -92,7 +87,7 @@ class CompanyDetailButtonsTest {
     }
 
     @Test
-    void marketLeftClickRoutesOwnerToManagementAndVisitorToDetails() {
+    void marketDetailsAlsoOfferManagementToOwner() {
         var plugin = mock(me.geraldr12.Stonks.class);
         when(plugin.getGuiManager()).thenReturn(manager);
         gui(0);
@@ -103,6 +98,21 @@ class CompanyDetailButtonsTest {
                 .currentSharePrice(5).initialSharePrice(5).historic(new SizedStack<>(10)).build();
         when(companies.getCompanyById(42)).thenReturn(owned);
         item.getAction().accept(player, ClickType.LEFT);
+        verify(manager, times(2)).openCompanyDetailMenu(player, 42);
+        new CompanyDetailGui(player, manager, messages, 42).build().getPage(0)
+                .get(24).getAction().accept(player, ClickType.LEFT);
         verify(manager).openCompanyManagementMenu(player, 42);
+    }
+
+    @Test
+    void bankruptcyLeavesHistoryAndHidesTradingActions() {
+        CompanyDetailGui gui = gui(12);
+        company.setBankrupt(true);
+        company.setCurrentSharePrice(0);
+        var buttons = gui.build().getPage(0);
+        assertNotNull(buttons.get(20));
+        assertFalse(buttons.containsKey(10));
+        assertFalse(buttons.containsKey(28));
+        assertFalse(buttons.containsKey(30));
     }
 }

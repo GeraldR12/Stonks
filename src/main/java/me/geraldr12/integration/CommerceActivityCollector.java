@@ -1,5 +1,6 @@
 package me.geraldr12.integration;
 
+import me.geraldr12.data.services.ShopLinksService;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.event.Event;
@@ -24,12 +25,31 @@ public final class CommerceActivityCollector implements Listener {
     private final QuickShopAdapter quickShop;
     private final TownyAdapter towny;
     private final Map<UUID, Deque<CommerceObservation>> byTown = new HashMap<>();
+    private final Deque<LinkedTrade> linkedTrades = new ArrayDeque<>();
+    private ShopLinksService shopLinks;
     private final java.util.function.BooleanSupplier primaryThread;
     private final java.util.function.Function<Location, Object> townResolver;
     private final Registration registration;
     private final boolean optionalIntegration;
     private boolean registered;
 
+    private record LinkedTrade(ShopLinksService.ShopLink link, Instant time) {}
+
+    public void observeLinkedShops(ShopLinksService links) {
+        shopLinks = links;
+    }
+
+    public long linkedTradeCount(long companyId) {
+        if (shopLinks == null || !isRegistered()) return -1;
+        Instant cutoff = Instant.now().minus(MAX_RETENTION);
+        pruneLinkedTrades(cutoff);
+        return linkedTrades.stream().filter(trade -> trade.link().companyId() == companyId)
+                .filter(trade -> shopLinks.linkOf(trade.link().shopId()).filter(trade.link()::equals).isPresent()).count();
+    }
+
+    private void pruneLinkedTrades(Instant cutoff) {
+        while (!linkedTrades.isEmpty() && linkedTrades.peekFirst().time().isBefore(cutoff)) linkedTrades.removeFirst();
+    }
     @FunctionalInterface
     interface Registration {
         void register(Plugin plugin, CommerceActivityCollector collector)
@@ -137,12 +157,26 @@ public final class CommerceActivityCollector implements Listener {
 
     void observeEvent(Object event) throws ReflectiveOperationException {
             Object shop = event.getClass().getMethod("getShop").invoke(event);
+        Number amount = (Number) event.getClass().getMethod("getAmount").invoke(event);
+        Instant now = Instant.now();
+        if (shopLinks != null && amount != null && amount.longValue() > 0) observeLinkedTrade(shop, now);
             Location location = (Location) shop.getClass().getMethod("getLocation").invoke(shop);
             Object town = townResolver.apply(location);
             if (town == null) return;
             UUID townId = (UUID) town.getClass().getMethod("getUUID").invoke(town);
-            Number amount = (Number) event.getClass().getMethod("getAmount").invoke(event);
-            observeResolved(townId, amount, Instant.now());
+        observeResolved(townId, amount, now);
+    }
+
+    private void observeLinkedTrade(Object shop, Instant now) {
+        try {
+            Number id = (Number) shop.getClass().getMethod("getShopId").invoke(shop);
+            shopLinks.linkOf(id.longValue()).ifPresent(link -> {
+                pruneLinkedTrades(now.minus(MAX_RETENTION));
+                if (linkedTrades.size() >= MAX_OBSERVATIONS) linkedTrades.removeFirst();
+                linkedTrades.addLast(new LinkedTrade(link, now));
+            });
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
     }
 
     static CommerceObservation normalize(Number amount, Number balance, Instant observedAt) {

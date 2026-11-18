@@ -1,6 +1,7 @@
 package me.geraldr12.commands;
 
 import me.geraldr12.Stonks;
+import me.geraldr12.economy.VaultEconomyMutationGateway;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
@@ -171,7 +172,9 @@ public class CreateCommand implements MainCommand.SubCommand {
                                 return true;
                             }
                             EconomyResponse withdrawal;
+                            double before;
                             try {
+                                before = vaultEconomy.getBalance(player);
                                 withdrawal = vaultEconomy.withdrawPlayer(player, companyCreationTax);
                             } catch (RuntimeException e) {
                                 journal.markReconciliationRequired(record, "Vault withdrawal outcome is ambiguous: " + e.getClass().getSimpleName());
@@ -184,10 +187,10 @@ public class CreateCommand implements MainCommand.SubCommand {
                             if (withdrawal == null || !withdrawal.transactionSuccess()
                                     || !Double.isFinite(withdrawal.amount)
                                     || Double.compare(withdrawal.amount, companyCreationTax) != 0) {
-                                if (withdrawal != null && withdrawal.transactionSuccess()) {
+                                if (!VaultEconomyMutationGateway.rejectedWithoutChangingBalance(
+                                        vaultEconomy, player, before, withdrawal)) {
                                     journal.markReconciliationRequired(record,
-                                            "Vault withdrawal amount mismatch: expected " + companyCreationTax
-                                                    + ", received " + withdrawal.amount);
+                                            "Vault withdrawal outcome could not be confirmed");
                                     player.sendMessage(messages.getPluginPrefix()
                                             + "CRITICAL: company creation requires administrator reconciliation.");
                                     return true;

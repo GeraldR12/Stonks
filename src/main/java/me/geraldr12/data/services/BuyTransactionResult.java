@@ -9,6 +9,7 @@ public record BuyTransactionResult(
 
     public enum Status {
         SUCCESS,
+        QUOTE_CHANGED,
         VALIDATION_REJECTED,
         INSUFFICIENT_FUNDS,
         INSUFFICIENT_SHARES,

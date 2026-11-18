@@ -8,6 +8,7 @@ import me.geraldr12.ui.GuiManager;
 import me.geraldr12.ui.items.InvestmentItem;
 import me.geraldr12.ui.items.PortfolioSummaryItem;
 import me.geraldr12.ui.menu.MenuButton;
+import me.geraldr12.ui.menu.MenuIcon;
 import me.geraldr12.ui.menu.PagedLayout;
 import me.geraldr12.utils.Messages;
 import org.bukkit.Material;
@@ -27,6 +28,8 @@ public class PortfolioGui extends AbstractPluginGui {
                         guiManager.getCompaniesService(), investment)).toList();
         Map<Character, MenuButton> buttons = controls(Material.GRAY_STAINED_GLASS_PANE, "");
         buttons.put('o', new PortfolioSummaryItem(guiManager.getCompaniesService(), investments, messages));
+        if (items.isEmpty()) items = List.of(new MenuButton(new MenuIcon(Material.PAPER,
+                messages.getMessageByKey("uiPortfolioEmpty"), List.of()), null));
         return new PagedLayout(new String[]{
                 "# # # # o # # # #",
                 "# x x x x x x x #",

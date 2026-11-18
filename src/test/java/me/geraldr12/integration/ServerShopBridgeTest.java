@@ -51,13 +51,14 @@ public class ServerShopBridgeTest {
 
     static final class Gateway implements TreasuryService.Gateway {
         double balance;
+        boolean refuseWithdrawal;
         final List<String> moves = new ArrayList<>();
         @Override public String account() { return "Server_Account"; }
         @Override public boolean deposit(String name, double amount) { balance += amount; moves.add("+" + amount); return true; }
         @Override public int fractionalDigits() { return 0; }
         @Override public double balance(String name) { return balance; }
         @Override public boolean withdraw(String name, double amount) {
-            if (balance < amount) return false;
+            if (refuseWithdrawal || balance < amount) return false;
             balance -= amount; moves.add("-" + amount); return true;
         }
     }
@@ -89,6 +90,21 @@ public class ServerShopBridgeTest {
         bridge.onCompleted(new Event(new Completed("SELL", admin, new Balance(6), true)));
         assertEquals(4, gateway.balance);
         assertEquals(List.of("-6.0"), gateway.moves);
+    }
+
+    @Test
+    void departureFromValidatedBalanceCancelsSaleBeforeItemsMove() {
+        Gateway gateway = new Gateway();
+        gateway.balance = 10;
+        ServerShopBridge bridge = bridge(gateway);
+        Event validated = new Event(new Prepared("SELL", admin, 6, false));
+        bridge.onValidated(validated);
+        assertFalse(validated.isCancelled());
+        gateway.refuseWithdrawal = true;
+        Event completion = new Event(new Completed("SELL", admin, new Balance(6), true));
+        bridge.onCompleted(completion);
+        assertTrue(completion.isCancelled());
+        assertTrue(gateway.moves.isEmpty());
     }
 
     @Test

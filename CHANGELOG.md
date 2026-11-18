@@ -2,6 +2,15 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.11.0-rc.1] - 2026-11-18
+
+- The market has a bankruptcy archive. Closed positions show their loss and release share capacity while keeping the original records.
+- Buy and sell buttons open a quote with quantity, average price, fee and final gold amount. A changed or expired quote requires a fresh confirmation.
+- The inventory menu now includes a guide, company creation, price history, custom quantities and shop controls. New text can be translated in `messages.yml`.
+- The scheduler skips companies with a transaction awaiting reconciliation. Creation and deletion now keep unconfirmed Vault responses pending.
+- ExcellentShop sales are refused if the server treasury debit cannot be confirmed. Pending treasury operations survive restart and require review before retrying.
+- Linked QuickShop trades can be observed in company details. They do not change prices or payouts.
+
 ## [2.10.5] - 2026-11-14
 
 ### Fixed

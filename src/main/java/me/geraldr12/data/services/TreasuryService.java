@@ -57,6 +57,9 @@ public class TreasuryService {
     private double owed;
     private double paid;
     private double unbacked;
+    private double pendingCredit;
+    private double pendingPayout;
+    private boolean storageUnavailable;
 
     public TreasuryService(Gateway gateway, Path ledger) {
         this.gateway = gateway;
@@ -85,6 +88,10 @@ public class TreasuryService {
 
     /** Tries to deposit what is owed. Called by {@link #credit} and on startup. */
     public synchronized void flush() {
+        if (needsReview()) {
+            if (!storageUnavailable) save();
+            return;
+        }
         if (!enabled() || !(owed > 0)) {
             save();
             return;
@@ -94,17 +101,23 @@ public class TreasuryService {
             save();
             return;
         }
+        pendingCredit = amount;
+        if (!save()) {
+            pendingCredit = 0;
+            return;
+        }
         boolean ok;
         try {
             ok = gateway.deposit(gateway.account(), amount);
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Treasury deposit failed; it will be retried.", e);
-            ok = false;
+            LOG.log(Level.SEVERE, "Treasury deposit needs review. It will not be retried automatically.", e);
+            return;
         }
         if (ok) {
             owed = add(owed, -amount);
             credited = add(credited, amount);
         }
+        pendingCredit = 0;
         save();
     }
 
@@ -125,7 +138,7 @@ public class TreasuryService {
 
     /** True when the treasury account holds at least {@code amount} beyond what Stonks still owes it. */
     public synchronized boolean canPay(double amount) {
-        if (!enabled() || !Double.isFinite(amount) || amount < 0) return false;
+        if (!enabled() || needsReview() || !Double.isFinite(amount) || amount < 0) return false;
         double balance;
         try {
             balance = gateway.balance(gateway.account());
@@ -136,26 +149,31 @@ public class TreasuryService {
     }
 
     /**
-     * Takes money out of the treasury for something the server paid a player (an admin-shop sale).
-     * A refused withdrawal is counted as {@code unbacked} so staff can see it; it is never retried.
+     * Debits the treasury before ExcellentShop can pay a player.
      */
     public synchronized boolean pay(double amount) {
-        if (!enabled() || !Double.isFinite(amount) || amount <= 0) return true;
+        if (!enabled() || needsReview() || !Double.isFinite(amount) || amount <= 0) return false;
+        pendingPayout = amount;
+        if (!save()) {
+            pendingPayout = 0;
+            return false;
+        }
         boolean ok;
         try {
             ok = gateway.withdraw(gateway.account(), amount);
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Treasury withdrawal failed.", e);
-            ok = false;
+            LOG.log(Level.SEVERE, "Treasury withdrawal needs review. Server shop payouts are paused.", e);
+            return false;
         }
         if (ok) {
             paid = add(paid, amount);
-        } else {
-            unbacked = add(unbacked, amount);
-            LOG.warning("Treasury could not cover a payout of " + amount + "; recorded as unbacked.");
         }
-        save();
-        return ok;
+        pendingPayout = 0;
+        return save() && ok;
+    }
+
+    public synchronized boolean needsReview() {
+        return storageUnavailable || pendingCredit != 0 || pendingPayout != 0;
     }
 
     public synchronized double paid() {
@@ -195,18 +213,25 @@ public class TreasuryService {
             owed = root.get("owed") instanceof Number n ? n.doubleValue() : 0;
             paid = root.get("paid") instanceof Number n ? n.doubleValue() : 0;
             unbacked = root.get("unbacked") instanceof Number n ? n.doubleValue() : 0;
+            pendingCredit = root.get("pendingCredit") instanceof Number n ? n.doubleValue() : 0;
+            pendingPayout = root.get("pendingPayout") instanceof Number n ? n.doubleValue() : 0;
+            if (needsReview()) LOG.severe("Treasury has a pending Vault operation; inspect the ledger before resuming it.");
         } catch (IOException | RuntimeException e) {
-            LOG.log(Level.WARNING, "Unable to read " + ledger + "; treasury totals start at zero.", e);
+            storageUnavailable = true;
+            LOG.log(Level.SEVERE, "Unable to read treasury ledger; treasury operations are paused.", e);
         }
     }
 
-    private void save() {
+    private boolean save() {
+        if (storageUnavailable) return false;
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("account", gateway.account() == null ? "" : gateway.account());
         root.put("credited", credited);
         root.put("owed", owed);
         root.put("paid", paid);
         root.put("unbacked", unbacked);
+        root.put("pendingCredit", pendingCredit);
+        root.put("pendingPayout", pendingPayout);
         Path temporary = null;
         try {
             Files.createDirectories(ledger.getParent());
@@ -218,8 +243,11 @@ public class TreasuryService {
                 Files.move(temporary, ledger, StandardCopyOption.REPLACE_EXISTING);
             }
             temporary = null;
+            return true;
         } catch (IOException e) {
+            storageUnavailable = true;
             LOG.log(Level.SEVERE, "Unable to save treasury ledger " + ledger, e);
+            return false;
         } finally {
             if (temporary != null) {
                 try {

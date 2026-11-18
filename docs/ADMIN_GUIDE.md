@@ -65,7 +65,7 @@ All keys live under `Stonks:` in `plugins/Stonks/config.yml`. Run `/invest reloa
 | `Updates.Reminder` | `true` | Tells ops about new versions when they join. |
 | `StockCrash.Enabled` | `true` | Allows crashes. |
 | `StockCrash.Aggressiveness` | `0.7` | 0 to 1. Higher means more frequent crashes, and risk multiplies it. |
-| `StockCrash.RemoveBankrupt` | `false` | Currently ignored: bankrupt companies are kept and marked bankrupt, because removing them would need a payout to every shareholder. |
+| `StockCrash.RemoveBankrupt` | `false` | Legacy key. Bankrupt companies leave the active list and remain in the bankruptcy archive. |
 | `MarketImpactPerShare` | `0.00003` | How much each traded share moves the price. 1000 shares is about 3%. 0 to 0.01. |
 | `Taxes.Trading` | `0.01` | Fee per trade as a fraction of its value (1%). Below 0.5. |
 | `Taxes.TradingMinimum` | `1.0` | Smallest fee per trade. Stops tiny orders from dodging the fee. |
@@ -77,6 +77,8 @@ All keys live under `Stonks:` in `plugins/Stonks/config.yml`. Run `/invest reloa
 | `Limits.MaxSharePrice` | `50` | Highest starting share price. `-1` turns it off. |
 | `Limits.MinBalance` | `0.1` | Not enforced yet. |
 | `Limits.MaxSharesPerPlayer` | `1000` | Most shares one player can hold across companies they don't own. Shares of their own companies don't count. `-1` turns it off. |
+
+Before rolling back from 2.11 to 2.10.5, preserve a matching backup of the Stonks data directory and JAR. The old company reader can reject bankruptcy metadata introduced in 2.11. Reconcile any financial effects applied after the backup before restoring it.
 
 ### How prices behave
 Each update moves every company's price by a random step. A company with risk `r` and starting price `p` stays roughly between `p × 0.6 / r` and `p × 3 × r`. Near the bottom it can crash, and a company at zero is bankrupt and can't be traded.
@@ -116,6 +118,7 @@ The auction house listing tax (`/ah`, 10% by default) does not go to the account
 - Money comes in from Stonks fees and creation tax, `/shop` purchases and Towny (on our server one Towny new day added about 19,500).
 - Money goes out through `/shop` sales. If the balance falls day after day, the ExcellentShop selling prices are too generous for what comes in: lower them or top the account up.
 - The ledger's `credited` minus `paid` should match what the account gained from Stonks and `/shop`. Towny deposits go straight to the account and don't appear in the ledger.
+- The ledger records `pendingCredit` and `pendingPayout` before calling Vault. A nonzero pending amount on startup requires staff to compare the ledger with the provider's records. Automatic treasury mutations stay paused until the discrepancy is resolved. Keep the original ledger and transaction evidence.
 - If `unbacked` goes above 0, or `owed` keeps growing, check that the account exists and that `Treasury.Account` matches its name exactly.
 - With an empty account, `/shop` refuses sales until the account is topped up.
 - Don't rename or delete `Server_Account`. Stonks and Towny find it by name. Stonks would keep its deposits as `owed` and retry, but Towny's would be lost.

@@ -244,7 +244,7 @@ class FinancialCommandFixture {
                 return;
             }
             MarketTransactionStatus status = switch (boundary) {
-                case "balanceException", "rejected", "nullResponse" -> MarketTransactionStatus.ABORTED;
+                case "balanceException", "rejected" -> MarketTransactionStatus.ABORTED;
                 case "reconciliationFalse" -> MarketTransactionStatus.ECONOMY_APPLIED;
                 case "economyAndReconciliationFalse" -> MarketTransactionStatus.PREPARED;
                 case "stateReconciliationFalse" -> MarketTransactionStatus.ECONOMY_APPLIED;

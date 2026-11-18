@@ -124,7 +124,7 @@ class TreasuryServiceTest {
     }
 
     @Test
-    void gatewayExceptionKeepsFeeOwed() {
+    void gatewayExceptionKeepsFeeOwedAndPreventsAutomaticRetryAfterRestart() {
         TreasuryService.Gateway exploding = new TreasuryService.Gateway() {
             @Override public String account() { return "Server_Account"; }
             @Override public boolean deposit(String name, double amount) { throw new IllegalStateException("db down"); }
@@ -133,6 +133,12 @@ class TreasuryServiceTest {
         TreasuryService treasury = new TreasuryService(exploding, ledger());
         assertDoesNotThrow(() -> treasury.credit(4));
         assertEquals(4.0, treasury.owed());
+        assertTrue(treasury.needsReview());
+        FakeGateway recovered = new FakeGateway();
+        TreasuryService afterRestart = new TreasuryService(recovered, ledger());
+        afterRestart.flush();
+        assertTrue(afterRestart.needsReview());
+        assertTrue(recovered.deposits.isEmpty());
         assertDoesNotThrow(() -> TreasuryService.credit(null, 4));
     }
 }

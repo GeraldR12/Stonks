@@ -38,6 +38,17 @@ import me.geraldr12.persistence.MarketTransactionRecord;
 import java.util.EnumMap;
 
 class BuyTransactionServiceTest {
+    @Test
+    void aChangedQuoteNeverReachesTheJournalOrVault() throws Exception {
+        Fixture fixture = happyFixture();
+        var oldQuote = new MarketPricing.Quote(20, 1, 21, 10);
+        var result = new BuyTransactionService(fixture.plugin, fixture.economyMutator())
+                .execute(fixture.playerId, fixture.player, 7, 2, oldQuote);
+        assertEquals(BuyTransactionResult.Status.QUOTE_CHANGED, result.status());
+        verify(fixture.journalSpy, never()).prepareCurrentSchema(any());
+        verify(fixture.economy, never()).withdrawPlayer(any(OfflinePlayer.class), anyDouble());
+    }
+
 @Test
     void invalidInputsAreRejectedBeforeJournalAdmissionOrFinancialEffects() throws Exception {
         Fixture fixture = new Fixture();

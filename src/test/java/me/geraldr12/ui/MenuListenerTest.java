@@ -41,6 +41,9 @@ class MenuListenerTest {
 
     @Test
     void topClickIsCancelledAndExecutesActionAndRefreshes() {
+        AbstractPluginGui menu = mock(AbstractPluginGui.class);
+        when(holder.getMenu()).thenReturn(menu);
+        when(menu.canOpen()).thenReturn(true);
         InventoryClickEvent event = click(10, ClickType.RIGHT);
         listener.onClick(event);
         verify(event).setCancelled(true);

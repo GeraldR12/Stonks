@@ -13,8 +13,6 @@ import me.geraldr12.persistence.MarketTransactionRecord;
 import me.geraldr12.utils.MarketTransactionLocks;
 import org.bukkit.OfflinePlayer;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -70,6 +68,11 @@ public final class BuyTransactionService {
 
     public BuyTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
                                         long companyId, int quantity) {
+        return execute(playerId, economyActor, companyId, quantity, null);
+    }
+
+    public BuyTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
+                                        long companyId, int quantity, MarketPricing.Quote expected) {
         if (playerId == null || economyActor == null || companyId < 0 || quantity <= 0) {
             return result(BuyTransactionResult.Status.VALIDATION_REJECTED,
                     companyId, quantity, null);
@@ -109,17 +112,15 @@ public final class BuyTransactionService {
                         return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
                     CompaniesService companies = plugin.getCompaniesService();
-                    double gross = MarketPricing.buyGross(unitPrice, quantity, companies.getMarketImpactPerShare());
-                    double unroundedTotal = gross + MarketPricing.fee(gross,
-                            companies.getTradingTax(), companies.getTradingMinimum());
-                    if (!Double.isFinite(unroundedTotal) || unroundedTotal <= 0) {
+                    MarketPricing.Quote quote = MarketPricing.quote(unitPrice, quantity, true, fractionalDigits, companies);
+                    if (quote == null || quote.total() <= 0) {
                         return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
-                    double total = fractionalDigits == -1 ? unroundedTotal
-                            : BigDecimal.valueOf(unroundedTotal).setScale(fractionalDigits, RoundingMode.DOWN).doubleValue();
-                    if (!Double.isFinite(total) || total <= 0) {
-                        return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
+                    if (expected != null && !expected.equals(quote)) {
+                        return result(BuyTransactionResult.Status.QUOTE_CHANGED, companyId, quantity, null);
                     }
+                    double gross = quote.gross();
+                    double total = quote.total();
                     if (!economy.has(economyActor, total)) {
                         return BuyTransactionResult.of(BuyTransactionResult.Status.INSUFFICIENT_FUNDS,
                                 companyId, quantity, null, total);

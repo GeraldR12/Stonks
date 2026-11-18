@@ -140,6 +140,7 @@ public class Stonks extends JavaPlugin {
         priceHistoryLog = new PriceHistoryLog(getDataFolder().toPath().resolve("history"),
                 () -> getConfig().getBoolean("Stonks.History.Enabled", true));
         shopLinksService = new ShopLinksService(getDataFolder().toPath().resolve("shops").resolve("links.yml"));
+        commerceActivityCollector.observeLinkedShops(shopLinksService);
         shopLinksListener = new ShopLinksListener(shopLinksService);
         townFundamentalsSnapshotService = new TownFundamentalsSnapshotService(
                 towny, commerceActivityCollector, new AdvancedJobsAdapter());
@@ -149,6 +150,10 @@ public class Stonks extends JavaPlugin {
         if (commerceActivityCollector != null) {
             commerceActivityCollector.register(this);
         }
+    }
+
+    public long linkedShopTradeCount(long companyId) {
+        return commerceActivityCollector == null ? -1 : commerceActivityCollector.linkedTradeCount(companyId);
     }
 
     private void rollbackActivation() {

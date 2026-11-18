@@ -3,7 +3,6 @@ package me.geraldr12.ui.items;
 import java.text.MessageFormat;
 import java.util.List;
 import me.geraldr12.Stonks;
-import me.geraldr12.commands.SellCommand;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.dao.InvestmentDao;
 import me.geraldr12.data.services.CompaniesService;
@@ -21,6 +20,13 @@ import org.bukkit.inventory.ItemStack;
 public class InvestmentItem extends MenuButton {
     public InvestmentItem(Stonks plugin, Messages messages, CompaniesService companiesService, InvestmentDao investment) {
         super(icon(messages, companiesService, investment), (player, click) -> {
+            CompanyDao company = companiesService.getCompanyById(investment.getCompanyId());
+            if (company == null) return;
+            if (click == ClickType.LEFT) {
+                plugin.getGuiManager().openCompanyDetailMenu(player, investment.getCompanyId());
+                return;
+            }
+            if (!company.isTrading()) return;
             int quantity = 0;
             if (click == ClickType.RIGHT) quantity = 1;
             else if (click == ClickType.SHIFT_RIGHT) {
@@ -29,8 +35,7 @@ public class InvestmentItem extends MenuButton {
                         .mapToInt(InvestmentDao::getSharesAmount).findFirst().orElse(0);
             }
             if (quantity > 0) {
-                new SellCommand(plugin).onCommand(player,
-                        new String[]{String.valueOf(investment.getCompanyId()), String.valueOf(quantity)});
+                plugin.getGuiManager().openTradeQuote(player, investment.getCompanyId(), quantity, false);
             }
         });
     }
@@ -38,6 +43,14 @@ public class InvestmentItem extends MenuButton {
     private static MenuIcon icon(Messages messages, CompaniesService companiesService, InvestmentDao investment) {
         CompanyDao company = companiesService.getCompanyById(investment.getCompanyId());
         if (company == null) return new MenuIcon(Material.AIR, "", List.of());
+        if (!company.isTrading()) {
+            String position = company.isBankrupt() ? MessageFormat.format(messages.getMessageByKey("uiBankruptPosition"),
+                    FormattingUtils.formatDouble(investment.getSharesAmount() * investment.getAverageBuyPrice()))
+                    : messages.getMessageByKey("uiCompanySuspended");
+            return new MenuIcon(Material.PAPER, ChatColor.GOLD + company.getName(), List.of(position,
+                    MessageFormat.format(messages.getUiInvestmentItemShares(), investment.getSharesAmount()),
+                    messages.getMessageByKey("uiCompanyOpenDetails")));
+        }
         double currentValue = investment.getSharesAmount() * company.getCurrentSharePrice();
         return new MenuIcon(company.getIcon() != null ? company.getIcon() : Material.DIAMOND,
                 ChatColor.GOLD + company.getName() + (!company.isBankrupt() ? MessageFormat.format(

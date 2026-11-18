@@ -39,12 +39,13 @@ Or type `/invest` and do all of it from the menu.
 
 `/invest` opens a chest menu.
 
-- **Market** lists the companies. Right-click a company to buy 1 share, Shift+Right-click for 10, Shift+Left-click for 100. Left-click opens its details page (or the management page, if it's your company), with buttons to buy 1, 10 or 100 and to sell 1, 10 or all.
-- **My Portfolio** lists what you own with the current value and your average buy price. Right-click sells 1 share, Shift+Right-click sells all of that company.
-- **My Companies** lists the companies you created, with a delete button that asks you to confirm.
+- **Market** lists active companies. Left-click to see its price history and trading buttons. Right-click, Shift+Right-click and Shift+Left-click are shortcuts for quotes of 1, 10 and 100 shares.
+- **My Portfolio** shows holdings, average cost and closed positions. Left-click for details. Right-click previews a sale of one share; Shift+Right-click previews a sale of the entire position.
+- **My Companies** includes company creation. Open your company's details and select **Manage company** to see shareholders, link chest shops or review closing an active company.
 - **Notifications** switches the chat messages on and off.
+- **Help** opens an interactive guide to all four screens and the bankruptcy archive.
 
-Menu clicks go through the same checks and fees as the commands.
+Review the quantity, price, fee and final amount before confirming a quote. Quotes expire after 30 seconds. You can enter a custom quantity, company name or price when prompted in chat. Type `cancel` to return to the menu.
 
 ## Buying and selling
 
@@ -74,11 +75,13 @@ Every 39 minutes (the server can change this) each company's price goes up or do
 - Risk 1 moves gently and stays closer to its starting price.
 - Risk 5 can climb much higher, and can also fall much further.
 
-Prices can also crash. A company whose price reaches zero is bankrupt: its shares are worth nothing, can't be bought or sold, and the company can't be deleted for a payout. Turn on the `company_bankrupt` notification if you want to hear about it.
+Prices can also crash. A bankruptcy closes the position at zero and releases the share limit. View the loss in **My Portfolio** and the company in **Market → Bankrupt companies**. Recent closures are highlighted for 24 hours. Older ones remain in the archive. Enable `company_bankrupt` notifications to receive an alert.
 
 `/invest company info <id>` shows the price history, so you can see how a company has behaved before you buy. Spreading your gold over a few companies is safer than putting it all in one.
 
 ## Starting a company
+
+Open **My Companies → Create a company**. Enter a name, choose the risk, set the share supply and starting price, then review the total before creating it. The optional custom icon is available in the chat command.
 
 ```
 /invest company create <name> <risk> <shares> <price> [icon]

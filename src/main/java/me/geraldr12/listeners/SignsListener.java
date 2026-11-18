@@ -96,6 +96,13 @@ public class SignsListener implements Listener {
         player.sendMessage(ChatColor.GRAY + "Stocks Left: " + ChatColor.WHITE + available);
         player.sendMessage("");
 
+        if (!company.isTrading()) {
+            player.sendMessage(company.isBankrupt() ? messages.getCompanyStatusBankrupt()
+                    : messages.getMessageByKey("uiCompanySuspended"));
+            player.sendMessage(messages.getPluginFooter());
+            return;
+        }
+
         // 3. Interactive Buttons (Using Bungee API for Spigot)
         TextComponent buyBtn = new TextComponent("  [ BUY STOCK ]  ");
         buyBtn.setColor(net.md_5.bungee.api.ChatColor.GREEN);

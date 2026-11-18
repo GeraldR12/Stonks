@@ -1,6 +1,7 @@
 package me.geraldr12.commands;
 
 import me.geraldr12.Stonks;
+import me.geraldr12.economy.VaultEconomyMutationGateway;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
@@ -83,6 +84,10 @@ public class DeleteCommand implements MainCommand.SubCommand {
                         return true;
                     }
 
+                    if (company.isBankrupt()) {
+                        player.sendMessage(messages.getPluginPrefix() + messages.getMessageByKey("uiCompanyDeleteUnavailable"));
+                        return true;
+                    }
                     double valuation = company.getTotalShares() * company.getCurrentSharePrice();
                     if (!Double.isFinite(valuation) || valuation <= 0) {
                         player.sendMessage(messages.getPluginPrefix()
@@ -120,7 +125,9 @@ public class DeleteCommand implements MainCommand.SubCommand {
                     }
 
                     EconomyResponse deposit;
+                    double before;
                     try {
+                        before = economy.getBalance(player);
                         deposit = economy.depositPlayer(player, valuation);
                     } catch (RuntimeException e) {
                         journal.markReconciliationRequired(record, "Vault deposit outcome is ambiguous: " + e.getClass().getSimpleName());
@@ -131,10 +138,9 @@ public class DeleteCommand implements MainCommand.SubCommand {
                     if (deposit == null || !deposit.transactionSuccess()
                             || !Double.isFinite(deposit.amount)
                             || Double.compare(deposit.amount, valuation) != 0) {
-                        if (deposit != null && deposit.transactionSuccess()) {
+                        if (!VaultEconomyMutationGateway.rejectedWithoutChangingBalance(economy, player, before, deposit)) {
                             journal.markReconciliationRequired(record,
-                                    "Vault deposit amount mismatch: expected " + valuation
-                                            + ", received " + deposit.amount);
+                                    "Vault deposit outcome could not be confirmed");
                             return critical(player, messages);
                         }
                         if (!journal.abort(record, "Vault rejected deposit")) {

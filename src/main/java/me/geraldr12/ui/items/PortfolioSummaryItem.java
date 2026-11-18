@@ -17,14 +17,19 @@ public class PortfolioSummaryItem extends MenuButton {
     }
 
     private static MenuIcon icon(CompaniesService companiesService, List<InvestmentDao> investments, Messages messages) {
-        int totalShares = investments.stream().mapToInt(InvestmentDao::getSharesAmount).sum();
+        long totalShares = investments.stream().filter(investment -> {
+            var company = companiesService.getCompanyById(investment.getCompanyId());
+            return company != null && !company.isBankrupt();
+        }).mapToLong(InvestmentDao::getSharesAmount).sum();
         double totalValue = investments.stream()
-                .filter(investment -> companiesService.companyExists(investment.getCompanyId()))
-                .mapToDouble(investment -> investment.getSharesAmount()
-                        * companiesService.getCompanyById(investment.getCompanyId()).getCurrentSharePrice()).sum();
+                .mapToDouble(investment -> {
+                    var company = companiesService.getCompanyById(investment.getCompanyId());
+                    return company != null && company.isTrading()
+                            ? investment.getSharesAmount() * company.getCurrentSharePrice() : 0.0;
+                }).sum();
         double totalInvestment = investments.stream()
                 .mapToDouble(investment -> investment.getSharesAmount() * investment.getAverageBuyPrice()).sum();
-        double profitPercentage = (totalValue - totalInvestment) / totalInvestment * 100;
+        double profitPercentage = totalInvestment > 0 ? (totalValue - totalInvestment) / totalInvestment * 100 : 0;
         return new MenuIcon(Material.DARK_OAK_SIGN,
                 messages.getUiPortfolioSummaryItemTitle() + MessageFormat.format(messages.getUiCompanyItemLastVariation(),
                         VisualizationUtils.formatCompanyVariation(profitPercentage)),

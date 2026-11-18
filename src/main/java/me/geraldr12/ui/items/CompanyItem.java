@@ -1,9 +1,9 @@
 package me.geraldr12.ui.items;
 
 import java.text.MessageFormat;
+import java.time.Duration;
 import java.util.List;
 import me.geraldr12.Stonks;
-import me.geraldr12.commands.BuyCommand;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.ui.menu.MenuButton;
@@ -23,16 +23,12 @@ public class CompanyItem extends MenuButton {
             CompanyDao company = companiesService.getCompanyById(companyId);
             if (company == null) return;
             if (click == ClickType.LEFT) {
-                if (player.getUniqueId().toString().equals(company.getOwnerUuid())) {
-                    plugin.getGuiManager().openCompanyManagementMenu(player, companyId);
-                } else {
-                    plugin.getGuiManager().openCompanyDetailMenu(player, companyId);
-                }
+                plugin.getGuiManager().openCompanyDetailMenu(player, companyId);
                 return;
             }
             int quantity = sharesForClick(click);
-            if (quantity > 0) {
-                new BuyCommand(plugin).onCommand(player, new String[]{String.valueOf(companyId), String.valueOf(quantity)});
+            if (quantity > 0 && company.isTrading()) {
+                plugin.getGuiManager().openTradeQuote(player, companyId, quantity, true);
             }
         });
     }
@@ -48,6 +44,16 @@ public class CompanyItem extends MenuButton {
 
     private static MenuIcon icon(CompanyDao company, Messages messages) {
         if (company == null) return new MenuIcon(Material.AIR, "", List.of());
+        if (!company.isTrading()) {
+            Long closedAt = company.getBankruptcyTime();
+            boolean recent = closedAt != null && closedAt <= System.currentTimeMillis()
+                    && System.currentTimeMillis() - closedAt < Duration.ofHours(24).toMillis();
+            return new MenuIcon(Material.PAPER, ChatColor.GOLD + company.getName(), List.of(
+                    recent ? messages.getMessageByKey("uiBankruptRecent")
+                            : company.isBankrupt() ? messages.getCompanyStatusBankrupt()
+                            : messages.getMessageByKey("uiCompanySuspended"),
+                    messages.getMessageByKey("uiCompanyOpenDetails")));
+        }
         double marketCap = company.getCurrentSharePrice() * company.getTotalShares();
         double totalVariation = (company.getCurrentSharePrice() - company.getInitialSharePrice()) / company.getInitialSharePrice() * 100;
         double lastVariation = !company.getHistoric().isEmpty() ? company.getHistoric().peek().getVariation() * 100 : 0;

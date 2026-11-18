@@ -13,8 +13,6 @@ import me.geraldr12.persistence.MarketTransactionRecord;
 import me.geraldr12.utils.MarketTransactionLocks;
 import org.bukkit.OfflinePlayer;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -54,6 +52,11 @@ public final class SellTransactionService {
 
     public SellTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
                                          long companyId, int quantity) {
+        return execute(playerId, economyActor, companyId, quantity, null);
+    }
+
+    public SellTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
+                                         long companyId, int quantity, MarketPricing.Quote expected) {
         if (playerId == null || economyActor == null || companyId < 0 || quantity <= 0) {
             return result(SellTransactionResult.Status.VALIDATION_REJECTED,
                     Math.max(0, companyId), Math.max(1, quantity), null);
@@ -88,23 +91,18 @@ public final class SellTransactionService {
                         return result(SellTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
                     CompaniesService companies = plugin.getCompaniesService();
-                    double gross = MarketPricing.sellGross(unitPrice, quantity, companies.getMarketImpactPerShare());
-                    double unroundedTotal = gross - MarketPricing.fee(gross,
-                            companies.getTradingTax(), companies.getTradingMinimum());
-                    if (!Double.isFinite(unroundedTotal)) {
+                    MarketPricing.Quote quote = MarketPricing.quote(unitPrice, quantity, false, fractionalDigits, companies);
+                    if (quote == null) {
                         return result(SellTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
-                    if (unroundedTotal <= 0) {
+                    if (quote.total() <= 0) {
                         return result(SellTransactionResult.Status.FEE_EXCEEDS_VALUE, companyId, quantity, null);
                     }
-                    double total = fractionalDigits == -1 ? unroundedTotal
-                            : BigDecimal.valueOf(unroundedTotal).setScale(fractionalDigits, RoundingMode.DOWN).doubleValue();
-                    if (!Double.isFinite(total)) {
-                        return result(SellTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
+                    if (expected != null && !expected.equals(quote)) {
+                        return result(SellTransactionResult.Status.QUOTE_CHANGED, companyId, quantity, null);
                     }
-                    if (total <= 0) {
-                        return result(SellTransactionResult.Status.FEE_EXCEEDS_VALUE, companyId, quantity, null);
-                    }
+                    double gross = quote.gross();
+                    double total = quote.total();
 
                     // Verify sufficient player shares
                     long currentShares = plugin.getPlayersService().getInvestmentInCompany(playerId, companyId)

@@ -54,7 +54,7 @@ public class ServerShopBridge implements Listener {
                     (listener, event) -> {
                         if (event.getClass() == validated) onValidated(event);
                     }, plugin, true);
-            Bukkit.getPluginManager().registerEvent(completed, this, EventPriority.MONITOR,
+            Bukkit.getPluginManager().registerEvent(completed, this, EventPriority.HIGHEST,
                     (listener, event) -> {
                         if (event.getClass() == completed) onCompleted(event);
                     }, plugin, true);
@@ -90,7 +90,7 @@ public class ServerShopBridge implements Listener {
         }
     }
 
-    /** After the trade: move the same gold into or out of the treasury. */
+    /** ExcellentShop 5.1.7 still allows cancellation here, before it moves items or player gold. */
     void onCompleted(Object event) {
         Object preview = previewItem;
         previewItem = null;
@@ -108,7 +108,14 @@ public class ServerShopBridge implements Listener {
             if (!(worth > 0)) return;
             String type = String.valueOf(call(transaction, "type"));
             if (type.equals("SELL")) {
-                treasury.pay(worth);
+                if (!treasury.pay(worth)) {
+                    ((Cancellable) event).setCancelled(true);
+                    try {
+                        Object recipient = call(transaction, "player");
+                        if (recipient instanceof Player player) player.sendMessage(OUT_OF_GOLD);
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+                }
             } else if (type.equals("BUY")) {
                 treasury.credit(worth);
             }

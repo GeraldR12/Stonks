@@ -40,7 +40,7 @@ class NativeMenuRegressionTest {
     }
 
     @Test
-    void rejectedSaleDoesNotSubtractFromTheInvestment() {
+    void salesFromThePortfolioOpenAQuoteWithoutChangingTheInvestment() {
         Stonks plugin = mock(Stonks.class);
         Messages messages = mock(Messages.class, RETURNS_MOCKS);
         CompaniesService companies = mock(CompaniesService.class);
@@ -52,14 +52,18 @@ class NativeMenuRegressionTest {
         when(plugin.getPlayersService()).thenReturn(players);
         when(player.getUniqueId()).thenReturn(playerId);
         when(players.getInvestments(playerId)).thenReturn(List.of(investment));
-        when(companies.getCompanyById(1)).thenReturn(mock(CompanyDao.class));
+        GuiManager manager = mock(GuiManager.class);
+        when(plugin.getGuiManager()).thenReturn(manager);
+        when(companies.getCompanyById(1)).thenReturn(CompanyDao.builder()
+                .currentSharePrice(5).initialSharePrice(5).build());
         InvestmentItem item = new InvestmentItem(plugin, messages, companies, investment);
 
         item.getAction().accept(player, ClickType.RIGHT);
         assertEquals(12, investment.getSharesAmount());
         item.getAction().accept(player, ClickType.SHIFT_RIGHT);
         assertEquals(12, investment.getSharesAmount());
-        verify(player, times(2)).sendMessage(contains("Nothing was charged"));
+        verify(manager).openTradeQuote(player, 1, 1, false);
+        verify(manager).openTradeQuote(player, 1, 12, false);
     }
 
     @Test
@@ -80,7 +84,7 @@ class NativeMenuRegressionTest {
         PortfolioGui gui = new PortfolioGui(player, manager, messages);
 
         assertNotNull(gui.build().getPage(0).get(10));
-        assertNull(gui.build().getPage(0).get(10));
+        assertNull(gui.build().getPage(0).get(10).getAction());
         verify(players, times(2)).getInvestments(playerId);
     }
 }

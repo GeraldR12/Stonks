@@ -9,6 +9,7 @@ public record SellTransactionResult(
 
     public enum Status {
         SUCCESS,
+        QUOTE_CHANGED,
         VALIDATION_REJECTED,
         INSUFFICIENT_SHARES,
         FEE_EXCEEDS_VALUE,

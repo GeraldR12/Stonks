@@ -42,6 +42,17 @@ public final class VaultEconomyMutationGateway {
         return invoke(player, amount, false);
     }
 
+    public static boolean rejectedWithoutChangingBalance(Economy economy, OfflinePlayer player,
+                                                          double before, EconomyResponse response) {
+        if (response == null || response.type != EconomyResponse.ResponseType.FAILURE
+                || !Double.isFinite(before)) return false;
+        try {
+            return Double.compare(before, economy.getBalance(player)) == 0;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     private EconomyMutationResult invoke(OfflinePlayer player, double amount, boolean withdraw) {
         if (economy == null) {
             return result(EconomyMutationOutcome.AMBIGUOUS, amount, null, null,
@@ -57,10 +68,7 @@ public final class VaultEconomyMutationGateway {
                         "Vault returned no response");
             }
             if (!response.transactionSuccess()) {
-                double balanceAfter = economy.getBalance(player);
-                EconomyMutationOutcome outcome = response.type == EconomyResponse.ResponseType.FAILURE
-                        && Double.isFinite(balanceBefore) && Double.isFinite(balanceAfter)
-                        && balanceBefore == balanceAfter
+                EconomyMutationOutcome outcome = rejectedWithoutChangingBalance(economy, player, balanceBefore, response)
                         ? EconomyMutationOutcome.DEFINITE_REJECTED : EconomyMutationOutcome.AMBIGUOUS;
                 return result(outcome, amount, response.amount,
                         response, response.errorMessage);

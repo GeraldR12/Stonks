@@ -1,5 +1,8 @@
 package me.geraldr12.data.services;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 public final class MarketPricing {
     private MarketPricing() {
     }
@@ -24,5 +27,20 @@ public final class MarketPricing {
 
     public static double fee(double gross, double rate, double minimum) {
         return Math.max(gross * rate, minimum);
+    }
+
+    public record Quote(double gross, double fee, double total, double priceAfter) {}
+
+    public static Quote quote(double price, int quantity, boolean buy, int digits, CompaniesService companies) {
+        if (!Double.isFinite(price) || price <= 0 || quantity <= 0 || digits < -1) return null;
+        double impact = companies.getMarketImpactPerShare();
+        double gross = buy ? buyGross(price, quantity, impact) : sellGross(price, quantity, impact);
+        double fee = fee(gross, companies.getTradingTax(), companies.getTradingMinimum());
+        double total = buy ? gross + fee : gross - fee;
+        double after = buy ? buyPriceAfter(price, quantity, impact) : sellPriceAfter(price, quantity, impact);
+        if (!Double.isFinite(total) || !Double.isFinite(after) || after <= 0) return null;
+        double settlement = digits < 0 ? total
+                : BigDecimal.valueOf(total).setScale(digits, RoundingMode.DOWN).doubleValue();
+        return new Quote(gross, fee, settlement, after);
     }
 }
