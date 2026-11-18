@@ -2,6 +2,15 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.12.0-rc.1] - 2026-11-18
+
+- Each company now has funds. The gold paid to create a company and to buy its shares goes into them, and selling shares is paid out of them. A sale the funds cannot cover is refused before any share moves. Stonks no longer creates or destroys gold in share trades.
+- Owners can deposit their own gold (`/invest company deposit`) and pay dividends per share to every shareholder (`/invest company dividend`). `Stonks.Taxes.Dividend` sends part of each dividend to the treasury. There is no personal withdrawal.
+- A linked QuickShop selling shop gives `Stonks.CompanyFunds.ShopRevenueShare` (default 5%) of each sale to the company, charged to the shop owner.
+- When the owner removes a company, they receive its funds instead of a payout at share price. When a company goes bankrupt or staff removes it, its funds go to the treasury account.
+- Staff can list pending payouts, move gold from the treasury into a company, and resolve a pending payout (`/invest admin funds list|grant|resolve`). A payout with an unconfirmed Vault outcome pauses that company until it is resolved.
+- Companies created before this version start with no funds, so their shares can be sold only once the funds hold enough. `Stonks.CompanyFunds.Enabled: false` restores the previous behaviour.
+
 ## [2.11.0-rc.3] - 2026-11-18
 
 - With The New Economy installed, a backed ExcellentShop trade is settled by TNE's own receipt for that player: it must succeed and move exactly the trade's gold, or the trade stays pending for review. Without TNE the balance check from rc.2 still applies and the log says so.

@@ -99,6 +99,16 @@ Example: `/invest company create Acme 1 10 40` costs 400 for the shares plus 40 
 
 To close a company you must own all of its shares. `/invest company delete <id>` (or the button in My Companies) pays you the current value of all shares and removes the company. A bankrupt company is worth nothing, so deleting it pays nothing and is refused.
 
+## Company funds and dividends
+
+A company keeps the gold its shareholders paid. When you sell shares, the company buys them back with that gold. If the funds are short, the sale is refused, nothing moves, and the message shows how much the company has. The company menu shows its funds.
+
+- `/invest company funds <ID>` shows a company's funds.
+- `/invest company deposit <ID> <amount>` (owner only) adds your own gold to the company.
+- `/invest company dividend <ID> <amount>` (owner only) pays that amount out of the funds to every shareholder, per share. The owner receives their share like everyone else.
+- Linking a chest shop to your company sends a small part of each sale into the company's funds.
+- Owners cannot withdraw the funds for themselves. If you remove your company while holding every share, you receive its funds. If the company goes bankrupt, shareholders lose their shares and the funds go to the server.
+
 ## Ticker signs
 
 A ticker sign shows a company's name, price, last change and status, and updates with the market.
