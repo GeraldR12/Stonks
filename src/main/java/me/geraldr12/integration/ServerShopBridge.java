@@ -10,8 +10,12 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.ToDoubleFunction;
 
@@ -22,6 +26,12 @@ import java.util.function.ToDoubleFunction;
  *
  * <p>ExcellentShop is reached only by reflection (5.1.7 checked with javap): the plugin loads without it.
  * Player chest shops (ExcellentShop's own "chest_shop" module) are left alone; they already trade between players.</p>
+ *
+ * <p>With TNE receipts ({@link TneReceiptSource}) the player's side is settled by TNE itself: once the trade can no
+ * longer be cancelled (MONITOR), the first TNE receipt for that player in the same call stack decides it, and it
+ * confirms only a successful transaction that moved exactly the trade's gold. Without TNE the bridge falls back to
+ * comparing the player's balance on the next tick. Items are outside this contract: nothing proves them
+ * synchronously.</p>
  */
 public class ServerShopBridge implements Listener {
 
@@ -30,12 +40,36 @@ public class ServerShopBridge implements Listener {
     static final String CURRENCY = "vault";
     static final String OUT_OF_GOLD = "The server shop is out of gold right now. Try again later.";
     static final String TEMPORARILY_UNAVAILABLE = "The server shop cannot settle this trade right now. Try again later.";
+    static final String BALANCE_OBSERVATION = "Server shop treasury uses balance observation (no TNE receipts); "
+            + "unrestricted release is not recommended.";
 
     private final TreasuryService treasury;
     private final Consumer<String> warn;
     private final ToDoubleFunction<Player> balance;
     private final Consumer<Runnable> nextTick;
     private final IdentityHashMap<Object, Boolean> validatedItems = new IdentityHashMap<>();
+    /** Trades accepted at HIGHEST, by event, until the next tick settles them. Main thread only. */
+    private final IdentityHashMap<Object, Wait> openTrades = new IdentityHashMap<>();
+    /** Trades that reached MONITOR uncancelled and wait for the player's TNE receipt. Main thread only. */
+    private final Map<UUID, Wait> armed = new HashMap<>();
+    private boolean receipts;
+
+    /** One backed trade on its way through ExcellentShop. */
+    private static final class Wait {
+        final TreasuryService.ShopSettlement settlement;
+        final UUID player;
+        final BigDecimal expected;
+        boolean armed;
+        UUID confirmed;
+        String divergence;
+
+        Wait(TreasuryService.ShopSettlement settlement, UUID player) {
+            this.settlement = settlement;
+            this.player = player;
+            BigDecimal amount = BigDecimal.valueOf(settlement.amount());
+            this.expected = "BUY".equals(settlement.direction()) ? amount.negate() : amount;
+        }
+    }
 
     public ServerShopBridge(TreasuryService treasury, Consumer<String> warn,
                             ToDoubleFunction<Player> balance, Consumer<Runnable> nextTick) {
@@ -43,6 +77,11 @@ public class ServerShopBridge implements Listener {
         this.warn = warn;
         this.balance = balance;
         this.nextTick = nextTick;
+    }
+
+    /** Settles trades by TNE receipt instead of by balance. Call before {@link #register}. */
+    public void useReceipts(boolean active) {
+        this.receipts = active;
     }
 
     /** Registers on ExcellentShop's events if the plugin is present. Returns whether it is active. */
@@ -61,6 +100,11 @@ public class ServerShopBridge implements Listener {
                     (listener, event) -> {
                         if (event.getClass() == completed) onCompleted(event);
                     }, plugin, true);
+            Bukkit.getPluginManager().registerEvent(completed, this, EventPriority.MONITOR,
+                    (listener, event) -> {
+                        if (event.getClass() == completed) onCompletedMonitor(event);
+                    }, plugin, true);
+            if (!receipts) warn.accept(BALANCE_OBSERVATION);
             return true;
         } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
             HandlerList.unregisterAll(this);
@@ -114,7 +158,8 @@ public class ServerShopBridge implements Listener {
                 warn.accept("Server shop trade cancelled because its preview state or participant could not be verified.");
                 return;
             }
-            if (treasury.needsReview()) {
+            // NightCore pays an offline player on another thread, where no receipt or balance check can follow it.
+            if (treasury.needsReview() || !player.isOnline()) {
                 cancellable.setCancelled(true);
                 player.sendMessage(TEMPORARILY_UNAVAILABLE);
                 return;
@@ -127,21 +172,65 @@ public class ServerShopBridge implements Listener {
                         ? OUT_OF_GOLD : TEMPORARILY_UNAVAILABLE);
                 return;
             }
-            nextTick.accept(() -> observe(cancellable, player, settlement));
+            Wait wait = new Wait(settlement, player.getUniqueId());
+            openTrades.put(event, wait);
+            nextTick.accept(() -> settle(cancellable, player, wait));
         } catch (ReflectiveOperationException | RuntimeException e) {
             if (event instanceof Cancellable cancellable) cancellable.setCancelled(true);
             warn.accept("Server shop trade could not be matched in the treasury: " + e);
         }
     }
 
-    private void observe(Cancellable event, Player player, TreasuryService.ShopSettlement settlement) {
-        try {
-            if (treasury.finishShop(settlement, event.isCancelled(), balance.applyAsDouble(player))) return;
-        } catch (RuntimeException e) {
-            warn.accept("Could not read the server shop settlement balance: " + e);
+    /** No plugin can cancel after MONITOR: ExcellentShop now moves the gold in this same call stack. */
+    void onCompletedMonitor(Object event) {
+        if (!receipts || !(event instanceof Cancellable cancellable) || cancellable.isCancelled()) return;
+        Wait wait = openTrades.get(event);
+        if (wait == null) return;
+        Wait previous = armed.put(wait.player, wait);
+        if (previous != null) previous.divergence = "a second trade started before its TNE receipt arrived";
+        wait.armed = true;
+    }
+
+    /** The first TNE receipt for an armed player decides that trade; receipts for anyone else are ignored. */
+    public void onReceipt(TneReceiptSource.Receipt receipt) {
+        // Off the server thread it is not our call stack: it cannot be this trade and must not touch the maps.
+        if (receipt == null || receipt.participant() == null || receipt.offThread()) return;
+        Wait wait = armed.remove(receipt.participant());
+        if (wait == null) return;
+        if (!receipt.successful()) {
+            wait.divergence = "TNE reported the transaction as failed";
+        } else if (receipt.delta() == null || receipt.delta().compareTo(wait.expected) != 0) {
+            wait.divergence = "TNE moved " + receipt.delta() + " instead of " + wait.expected;
+        } else {
+            wait.confirmed = receipt.receiptId();
         }
-        warn.accept("Server shop settlement needs review for " + settlement.player()
-                + ". Inspect treasury/ledger.yml before resuming backed trades.");
+    }
+
+    private void settle(Cancellable event, Player player, Wait wait) {
+        openTrades.remove(event);
+        armed.remove(wait.player, wait);
+        TreasuryService.ShopSettlement settlement = wait.settlement;
+        String reason;
+        try {
+            if (!receipts) {
+                if (treasury.finishShop(settlement, event.isCancelled(), balance.applyAsDouble(player))) return;
+                reason = "the player's balance did not change as expected";
+            } else if (wait.divergence != null) {
+                reason = wait.divergence;
+            } else if (wait.confirmed != null) {
+                if (treasury.finishShopReceipted(settlement, wait.confirmed)) return;
+                reason = "TNE receipt " + wait.confirmed + " could not be recorded (repeated, or storage failed)";
+            } else if (!wait.armed && event.isCancelled()) {
+                if (treasury.finishShop(settlement, true, balance.applyAsDouble(player))) return;
+                reason = "the trade was cancelled but the player's balance changed";
+            } else {
+                reason = "no TNE receipt arrived for the trade";
+            }
+        } catch (RuntimeException e) {
+            reason = "settlement failed: " + e;
+        }
+        warn.accept("Server shop settlement needs review for " + settlement.player() + " (" + reason
+                + "). Inspect treasury/ledger.yml before resuming backed trades.");
     }
 
     static boolean isAdminShop(List<?> items) throws ReflectiveOperationException {

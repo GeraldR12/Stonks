@@ -20,6 +20,7 @@ public class ServerShopBridgeTest {
     private static final Player PLAYER = mock(Player.class);
     static {
         when(PLAYER.getUniqueId()).thenReturn(UUID.fromString("ca74957c-181d-477b-b177-ddd63ad9fa45"));
+        when(PLAYER.isOnline()).thenReturn(true); // the bridge now refuses offline players
     }
     @TempDir Path temp;
     private double playerBalance = 500;

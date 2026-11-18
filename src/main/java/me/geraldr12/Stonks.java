@@ -7,6 +7,7 @@ import me.geraldr12.integration.AdvancedJobsAdapter;
 import me.geraldr12.integration.CommerceActivityCollector;
 import me.geraldr12.integration.ShopLookup;
 import me.geraldr12.integration.ServerShopBridge;
+import me.geraldr12.integration.TneReceiptSource;
 import me.geraldr12.data.services.ShopLinksService;
 import me.geraldr12.data.services.PriceHistoryLog;
 import me.geraldr12.data.services.TreasuryService;
@@ -63,6 +64,7 @@ public class Stonks extends JavaPlugin {
     @Getter private PriceHistoryLog priceHistoryLog;
     private ShopLinksListener shopLinksListener;
     private ShadowObservation shadowObservation;
+    private TneReceiptSource tneReceiptSource;
 
     @Inject @Getter private PlayerJoinListener playerJoinListener;
     @Inject @Getter private SignsListener signsListener;
@@ -125,6 +127,10 @@ public class Stonks extends JavaPlugin {
         rollbackActivation();
         if (autoUpdateService != null) {
             autoUpdateService.shutdown();
+        }
+        if (tneReceiptSource != null) {
+            tneReceiptSource.unregister();
+            tneReceiptSource = null;
         }
         getLogger().info("Plugin successfully disabled!");
     }
@@ -323,11 +329,18 @@ public class Stonks extends JavaPlugin {
                 shopLinksListener.registerShopDelete(this, quickShop);
             }
         }
-        if (treasuryService != null && getConfig().getBoolean("Stonks.Treasury.BackServerShop", false)
-                && new ServerShopBridge(treasuryService, getLogger()::warning,
-                player -> economy.getBalance(player), task -> getServer().getScheduler().runTask(this, task))
-                .register(this)) {
-            getLogger().info("Server shop (/shop) now pays and charges through the treasury account.");
+        if (treasuryService != null && getConfig().getBoolean("Stonks.Treasury.BackServerShop", false)) {
+            ServerShopBridge bridge = new ServerShopBridge(treasuryService, getLogger()::warning,
+                    player -> economy.getBalance(player), task -> getServer().getScheduler().runTask(this, task));
+            TneReceiptSource receipts = new TneReceiptSource(getLogger()::warning, getServer()::isPrimaryThread);
+            bridge.useReceipts(receipts.register(this, bridge::onReceipt));
+            if (bridge.register(this)) {
+                tneReceiptSource = receipts;
+                getLogger().info("Server shop (/shop) now pays and charges through the treasury account"
+                        + (receipts.active() ? ", settled by TNE receipts." : "."));
+            } else {
+                receipts.unregister();
+            }
         }
     }
 
