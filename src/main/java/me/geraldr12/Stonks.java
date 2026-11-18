@@ -11,6 +11,7 @@ import me.geraldr12.integration.TneReceiptSource;
 import me.geraldr12.data.services.ShopLinksService;
 import me.geraldr12.data.services.PriceHistoryLog;
 import me.geraldr12.data.services.TreasuryService;
+import me.geraldr12.data.services.CompanyFundsService;
 import me.geraldr12.economy.VaultTreasuryGateway;
 import me.geraldr12.listeners.ShopLinksListener;
 import me.geraldr12.integration.QuickShopAdapter;
@@ -61,6 +62,7 @@ public class Stonks extends JavaPlugin {
     @Getter private ShopLookup shopLookup;
     @Getter private ShopLinksService shopLinksService;
     @Getter private TreasuryService treasuryService;
+    @Getter private CompanyFundsService companyFundsService;
     @Getter private PriceHistoryLog priceHistoryLog;
     private ShopLinksListener shopLinksListener;
     private ShadowObservation shadowObservation;
@@ -143,10 +145,17 @@ public class Stonks extends JavaPlugin {
         treasuryService = new TreasuryService(new VaultTreasuryGateway(this),
                 getDataFolder().toPath().resolve("treasury").resolve("ledger.yml"));
         treasuryService.flush();
+        companyFundsService = new CompanyFundsService(
+                () -> getConfig().getBoolean("Stonks.CompanyFunds.Enabled", true),
+                getDataFolder().toPath().resolve("funds").resolve("ledger.yml"));
         priceHistoryLog = new PriceHistoryLog(getDataFolder().toPath().resolve("history"),
                 () -> getConfig().getBoolean("Stonks.History.Enabled", true));
         shopLinksService = new ShopLinksService(getDataFolder().toPath().resolve("shops").resolve("links.yml"));
         commerceActivityCollector.observeLinkedShops(shopLinksService);
+        // Part of every linked selling shop's income becomes the company's funds, charged to the shop owner.
+        commerceActivityCollector.onLinkedSale((link, owner, income) -> getServer().getScheduler().runTask(this,
+                () -> new me.geraldr12.data.services.CompanyFundsActions(this)
+                        .shopShare(owner, link.companyId(), income, "SHOP:" + java.util.UUID.randomUUID())));
         shopLinksListener = new ShopLinksListener(shopLinksService);
         townFundamentalsSnapshotService = new TownFundamentalsSnapshotService(
                 towny, commerceActivityCollector, new AdvancedJobsAdapter());

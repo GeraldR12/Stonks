@@ -137,6 +137,8 @@ public final class MarketTransactionLocks {
                     || !plugin.isJournalReady() || !isOpenGeneration(currentJournal)) {
                 return false;
             }
+            me.geraldr12.data.services.CompanyFundsService funds = plugin.getCompanyFundsService();
+            if (funds != null && funds.enabled() && funds.hasPending(companyId)) return false;
             return !requiresReconciliation(playerId, companyId);
         } catch (RuntimeException exception) {
             return false;

@@ -150,6 +150,9 @@ public class InterestRateScheduler extends BukkitRunnable {
                         completedCompany, oldSharePrice, newSharePrice, newSharesQuote));
             }
             if (bankrupt) {
+                // Investors lose their shares; the company's cash goes to the treasury instead of vanishing.
+                me.geraldr12.data.services.CompanyFundsActions.closeToTreasury(plugin,
+                        plugin.getCompanyFundsService(), completedCompany.getId(), "BANKRUPT");
                 if (plugin.getServer() != null && plugin.getServer().getPluginManager() != null) {
                     plugin.getServer().getPluginManager().callEvent(new CompanyBankruptEvent(completedCompany));
                 }
@@ -167,6 +170,8 @@ public class InterestRateScheduler extends BukkitRunnable {
 
     private void handleBankruptcy(CompanyDao company) {
         processBankruptCompany(company);
+        me.geraldr12.data.services.CompanyFundsActions.closeToTreasury(plugin,
+                plugin.getCompanyFundsService(), company.getId(), "BANKRUPT");
 
         CompanyDao bankruptCompany = companiesService.getCompanyById(company.getId());
         if (bankruptCompany == null || !bankruptCompany.isBankrupt()

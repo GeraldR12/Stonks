@@ -35,6 +35,18 @@ public final class CommerceActivityCollector implements Listener {
 
     private record LinkedTrade(ShopLinksService.ShopLink link, Instant time) {}
 
+    /** Receives each sale a linked selling shop made, with what its owner earned (after QuickShop's tax). */
+    @FunctionalInterface
+    public interface LinkedSaleSink {
+        void onLinkedSale(ShopLinksService.ShopLink link, UUID shopOwner, double ownerIncome);
+    }
+
+    private LinkedSaleSink linkedSaleSink;
+
+    public void onLinkedSale(LinkedSaleSink sink) {
+        linkedSaleSink = sink;
+    }
+
     public void observeLinkedShops(ShopLinksService links) {
         shopLinks = links;
     }
@@ -159,7 +171,7 @@ public final class CommerceActivityCollector implements Listener {
             Object shop = event.getClass().getMethod("getShop").invoke(event);
         Number amount = (Number) event.getClass().getMethod("getAmount").invoke(event);
         Instant now = Instant.now();
-        if (shopLinks != null && amount != null && amount.longValue() > 0) observeLinkedTrade(shop, now);
+        if (shopLinks != null && amount != null && amount.longValue() > 0) observeLinkedTrade(event, shop, now);
             Location location = (Location) shop.getClass().getMethod("getLocation").invoke(shop);
             Object town = townResolver.apply(location);
             if (town == null) return;
@@ -167,16 +179,30 @@ public final class CommerceActivityCollector implements Listener {
         observeResolved(townId, amount, now);
     }
 
-    private void observeLinkedTrade(Object shop, Instant now) {
+    private void observeLinkedTrade(Object event, Object shop, Instant now) {
         try {
             Number id = (Number) shop.getClass().getMethod("getShopId").invoke(shop);
-            shopLinks.linkOf(id.longValue()).ifPresent(link -> {
+            java.util.Optional<ShopLinksService.ShopLink> link = shopLinks.linkOf(id.longValue());
+            link.ifPresent(found -> {
                 pruneLinkedTrades(now.minus(MAX_RETENTION));
                 if (linkedTrades.size() >= MAX_OBSERVATIONS) linkedTrades.removeFirst();
-                linkedTrades.addLast(new LinkedTrade(link, now));
+                linkedTrades.addLast(new LinkedTrade(found, now));
             });
+            if (link.isPresent() && linkedSaleSink != null) reportLinkedSale(event, shop, link.get());
         } catch (ReflectiveOperationException | RuntimeException ignored) {
         }
+    }
+
+    /** Only a selling shop earns its owner gold; a buying shop pays it out, so it reports nothing. */
+    void reportLinkedSale(Object event, Object shop, ShopLinksService.ShopLink link)
+            throws ReflectiveOperationException {
+        java.util.Optional<QuickShopAdapter.ShopInfo> info = QuickShopAdapter.describe(shop);
+        if (info.isEmpty() || !info.get().selling()) return;
+        double balance = ((Number) event.getClass().getMethod("getBalance").invoke(event)).doubleValue();
+        double tax = ((Number) event.getClass().getMethod("getTax").invoke(event)).doubleValue();
+        double income = balance - Math.max(0, tax);
+        if (!Double.isFinite(income) || income <= 0) return;
+        linkedSaleSink.onLinkedSale(link, info.get().owner(), income);
     }
 
     static CommerceObservation normalize(Number amount, Number balance, Instant observedAt) {

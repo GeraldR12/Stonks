@@ -16,6 +16,7 @@ Stonks:
   Taxes:
     Trading: 0.01              # Fee as a fraction of the gross trade value, 0 <= rate < 0.5. Goes to Treasury.Account if set.
     TradingMinimum: 1.0        # Minimum fee per trade, must be non-negative.
+    Dividend: 0.0              # Fraction of each dividend that goes to Treasury.Account, 0 <= rate < 1.
     CompanyCreation:           # Tax applied when creating company, applied over the valuation, per risk level
       - 0.1                    # Risk 1 (10% of the total valuation)
       - 0.2                    # Risk 2 (20% of the total valuation)
@@ -25,6 +26,9 @@ Stonks:
   Treasury:
     Account: ""                # Server account that receives trading fees and creation tax (e.g. TNE's Server_Account). Empty: fees leave the economy.
     BackServerShop: false      # If true, ExcellentShop's /shop pays sellers out of that account and puts purchases into it.
+  CompanyFunds:
+    Enabled: true              # Each company keeps the gold paid for its shares. Sales and payouts come out of it; Stonks never creates gold.
+    ShopRevenueShare: 0.05     # Fraction of each linked QuickShop sale charged to the shop owner into the company's funds (0 disables).
   History:
     Enabled: true              # Appends every price change to plugins/Stonks/history/<companyId>.csv (no player names).
   Limits:
