@@ -9,6 +9,7 @@ softdepend:
   - QuickShop-Hikari
   - AdvancedJobs
   - ExcellentShop
+  - TheNewEconomy
 commands:
   invest:
     description: Main investment command.

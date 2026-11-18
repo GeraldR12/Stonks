@@ -11,8 +11,13 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -50,6 +55,7 @@ public class TreasuryService {
 
     private static final Logger LOG = Logger.getLogger("Stonks");
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+    static final int RECEIPT_MEMORY = 200;
 
     private final Gateway gateway;
     private final Path ledger;
@@ -61,6 +67,8 @@ public class TreasuryService {
     private double pendingPayout;
     private ShopSettlement pendingShop;
     private boolean storageUnavailable;
+    /** Last TNE receipts that settled a shop trade, oldest first, so one receipt never settles twice. */
+    private final Deque<String> shopReceipts = new ArrayDeque<>();
 
     public record ShopSettlement(String account, String player, String direction, double amount, double before) {
     }
@@ -191,6 +199,27 @@ public class TreasuryService {
     }
 
     /**
+     * Finalizes a trade whose player side TNE confirmed with a receipt (successful, exact amount, same call stack).
+     * Same guards as {@link #finishShop} without reading a balance; a receipt id already used leaves the trade
+     * for manual review.
+     */
+    public synchronized boolean finishShopReceipted(ShopSettlement settlement, UUID receiptId) {
+        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0 || receiptId == null
+                || !settlement.account().equals(gateway.account())) {
+            return false;
+        }
+        String id = receiptId.toString();
+        if (shopReceipts.contains(id)) return false;
+        shopReceipts.addLast(id);
+        while (shopReceipts.size() > RECEIPT_MEMORY) shopReceipts.removeFirst();
+        if ("BUY".equals(settlement.direction())) owed = add(owed, settlement.amount());
+        pendingShop = null;
+        if (!save()) return false;
+        if (owed > 0) flush();
+        return true;
+    }
+
+    /**
      * Finalizes only an observed debit/credit or a cancellation with an unchanged balance.
      * A failed observation deliberately leaves the persisted operation for manual review.
      */
@@ -262,6 +291,11 @@ public class TreasuryService {
             if (root.get("pendingShop") != null) {
                 pendingShop = YAML.convertValue(root.get("pendingShop"), ShopSettlement.class);
             }
+            if (root.get("shopReceipts") instanceof List<?> receipts) {
+                for (Object receipt : receipts) {
+                    if (receipt != null) shopReceipts.addLast(String.valueOf(receipt));
+                }
+            }
             if (needsReview()) LOG.severe("Treasury has a pending Vault operation; inspect the ledger before resuming it.");
         } catch (IOException | RuntimeException e) {
             storageUnavailable = true;
@@ -280,6 +314,7 @@ public class TreasuryService {
         root.put("pendingCredit", pendingCredit);
         root.put("pendingPayout", pendingPayout);
         if (pendingShop != null) root.put("pendingShop", pendingShop);
+        if (!shopReceipts.isEmpty()) root.put("shopReceipts", new ArrayList<>(shopReceipts));
         Path temporary = null;
         try {
             Files.createDirectories(ledger.getParent());
