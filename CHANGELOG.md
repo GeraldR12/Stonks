@@ -2,6 +2,12 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.11.0-rc.3] - 2026-11-18
+
+- With The New Economy installed, a backed ExcellentShop trade is settled by TNE's own receipt for that player: it must succeed and move exactly the trade's gold, or the trade stays pending for review. Without TNE the balance check from rc.2 still applies and the log says so.
+- The server shop refuses trades from offline players while it is backed by the treasury.
+- Company creation and deletion are written to the transaction journal step by step, like share orders.
+
 ## [2.11.0-rc.2] - 2026-11-18
 
 - Backed ExcellentShop purchases credit the treasury only after the expected player debit is observed. Checkout previews and cancelled purchases have no treasury effect.
