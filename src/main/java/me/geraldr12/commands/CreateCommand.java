@@ -6,6 +6,9 @@ import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
 import me.geraldr12.data.services.TreasuryService;
+import me.geraldr12.persistence.MarketTransactionEffect;
+import me.geraldr12.persistence.MarketTransactionEffectState;
+import me.geraldr12.persistence.MarketTransactionEffectType;
 import me.geraldr12.persistence.MarketTransactionJournal;
 import me.geraldr12.persistence.MarketTransactionRecord;
 import me.geraldr12.utils.Messages;
@@ -149,7 +152,13 @@ public class CreateCommand implements MainCommand.SubCommand {
                             record.setQuantity(companySharesAmount);
                             record.setValue(companyCreationTax);
                             record.setTimestamp(System.currentTimeMillis());
-                            if (journal.prepare(record) == null) {
+                            record.setQuoteCompanyId(record.getCompanyId());
+                            record.setQuotePlayerUuid(record.getPlayerUuid());
+                            record.setQuoteQuantity(companySharesAmount);
+                            record.setQuoteUnitSharePrice(companySharePrice);
+                            record.setQuoteTotalValue(companyCreationTax);
+                            record.setQuoteTimestamp(record.getTimestamp());
+                            if (journal.prepareCurrentSchema(record) == null) {
                                 player.sendMessage(messages.getPluginPrefix() + "Unable to prepare the transaction; try again later.");
                                 return true;
                             }
@@ -171,12 +180,20 @@ public class CreateCommand implements MainCommand.SubCommand {
                                         messages.getInsufficientMoney(), companyCreationTax));
                                 return true;
                             }
+                            if (!journal.requestEffect(record, MarketTransactionEffectType.ECONOMY_DEBIT,
+                                    10, companyCreationTax, companySharesAmount)) {
+                                journal.abort(record, "Debit request could not be persisted before mutation");
+                                player.sendMessage(messages.getPluginPrefix() + "Unable to prepare the transaction; try again later.");
+                                return true;
+                            }
                             EconomyResponse withdrawal;
                             double before;
                             try {
                                 before = vaultEconomy.getBalance(player);
                                 withdrawal = vaultEconomy.withdrawPlayer(player, companyCreationTax);
                             } catch (RuntimeException e) {
+                                recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_DEBIT,
+                                        MarketTransactionEffectState.AMBIGUOUS, "Vault withdrawal threw " + e.getClass().getSimpleName());
                                 journal.markReconciliationRequired(record, "Vault withdrawal outcome is ambiguous: " + e.getClass().getSimpleName());
                                 plugin.getLogger().log(java.util.logging.Level.SEVERE,
                                         "CRITICAL Stonks create Vault outcome is ambiguous", e);
@@ -189,44 +206,54 @@ public class CreateCommand implements MainCommand.SubCommand {
                                     || Double.compare(withdrawal.amount, companyCreationTax) != 0) {
                                 if (!VaultEconomyMutationGateway.rejectedWithoutChangingBalance(
                                         vaultEconomy, player, before, withdrawal)) {
+                                    recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_DEBIT,
+                                            MarketTransactionEffectState.AMBIGUOUS, "Vault withdrawal could not be confirmed");
                                     journal.markReconciliationRequired(record,
                                             "Vault withdrawal outcome could not be confirmed");
                                     player.sendMessage(messages.getPluginPrefix()
                                             + "CRITICAL: company creation requires administrator reconciliation.");
                                     return true;
                                 }
-                                journal.abort(record, "Vault rejected withdrawal");
+                                if (!recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_DEBIT,
+                                        MarketTransactionEffectState.DEFINITE_REJECTED, "Vault rejected withdrawal")
+                                        || !journal.abort(record, "Vault rejected withdrawal")) {
+                                    journal.markReconciliationRequired(record, "Debit rejection persistence failed");
+                                    player.sendMessage(messages.getPluginPrefix()
+                                            + "CRITICAL: company creation requires administrator reconciliation.");
+                                    return true;
+                                }
                                 player.sendMessage(messages.getPluginPrefix() + "Unable to complete the payment.");
                                 return true;
                             }
-                            if (!journal.markEconomyApplied(record)) {
+                            if (!recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_DEBIT,
+                                    MarketTransactionEffectState.CONFIRMED, "confirmed")) {
                                 journal.markReconciliationRequired(record, "Economy applied but journal update failed");
                                 player.sendMessage(messages.getPluginPrefix()
                                         + "CRITICAL: company creation requires administrator reconciliation.");
                                 return true;
                             }
-                            boolean companySaved = companiesService.saveReservedCompany(reserved);
+                            boolean companySaved = persistEffect(journal, record, MarketTransactionEffectType.COMPANY_RECORD_CREATE,
+                                    20, () -> companiesService.saveReservedCompany(reserved));
                             if (!companySaved) {
                                 journal.markReconciliationRequired(record, "Creation persistence failed after economy mutation: save");
                                 player.sendMessage(messages.getPluginPrefix() + "CRITICAL: company creation state is inconsistent; contact an administrator.");
                                 return true;
                             }
-                            boolean companySharesRemoved = companiesService.removeSharesFromCompany(reserved.getId(), companySharesAmount);
+                            boolean companySharesRemoved = persistEffect(journal, record, MarketTransactionEffectType.COMPANY_SHARE_REMOVAL,
+                                    30, () -> companiesService.removeSharesFromCompany(reserved.getId(), companySharesAmount));
                             if (!companySharesRemoved) {
                                 journal.markReconciliationRequired(record, "Creation persistence failed after economy mutation: companyShares");
                                 player.sendMessage(messages.getPluginPrefix() + "CRITICAL: company creation state is inconsistent; contact an administrator.");
                                 return true;
                             }
-                            boolean playerSharesAdded = playersService.addSharesToPlayer(player.getUniqueId(), reserved, companySharesAmount);
+                            boolean playerSharesAdded = persistEffect(journal, record, MarketTransactionEffectType.PLAYER_SHARE_ADD,
+                                    40, () -> playersService.addSharesToPlayer(player.getUniqueId(), reserved, companySharesAmount));
                             if (!playerSharesAdded) {
                                 journal.markReconciliationRequired(record, "Creation persistence failed after economy mutation: playerShares");
                                 player.sendMessage(messages.getPluginPrefix() + "CRITICAL: company creation state is inconsistent; contact an administrator.");
                                 return true;
                             }
-                            if (!journal.markStateCommitted(record)
-                                    || !journal.markMarketImpactStarted(record)
-                                    || !journal.markMarketImpactApplied(record)
-                                    || !journal.complete(record)) {
+                            if (!journal.complete(record)) {
                                 journal.markReconciliationRequired(record,
                                         "Creation completion marker failed after state commit");
                                 player.sendMessage(messages.getPluginPrefix()
@@ -247,6 +274,27 @@ public class CreateCommand implements MainCommand.SubCommand {
         }
 
         return true;
+    }
+
+    private boolean persistEffect(MarketTransactionJournal journal, MarketTransactionRecord record,
+                                  MarketTransactionEffectType type, int sequence,
+                                  java.util.function.BooleanSupplier mutation) {
+        if (!journal.requestEffect(record, type, sequence, 0.0, record.getQuantity())) return false;
+        boolean saved;
+        try {
+            saved = mutation.getAsBoolean();
+        } catch (RuntimeException e) {
+            saved = false;
+        }
+        return recordOutcome(journal, record, type, saved ? MarketTransactionEffectState.CONFIRMED
+                : MarketTransactionEffectState.AMBIGUOUS, saved ? "confirmed" : "Persistence outcome is ambiguous") && saved;
+    }
+
+    private boolean recordOutcome(MarketTransactionJournal journal, MarketTransactionRecord record,
+                                  MarketTransactionEffectType type, MarketTransactionEffectState state, String reason) {
+        String effectId = record.getEffects().stream().filter(effect -> effect.getType() == type)
+                .map(MarketTransactionEffect::getEffectId).findFirst().orElse(null);
+        return journal.recordEffectOutcome(record, effectId, state, reason);
     }
 
     private boolean isSharePriceAllowed(Player player, double price, Messages messages) {

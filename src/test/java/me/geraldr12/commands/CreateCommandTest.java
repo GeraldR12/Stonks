@@ -165,7 +165,7 @@ class CreateCommandTest {
 
         assertTrue(result);
         verify(companies, times(1)).reserveCompanyId(any(CompanyDao.class));
-        verify(spyJournal, never()).prepare(any());
+        verify(spyJournal, never()).prepareCurrentSchema(any());
         verify(economy, never()).has(any(org.bukkit.OfflinePlayer.class), anyDouble());
         verify(economy, never()).withdrawPlayer(any(org.bukkit.OfflinePlayer.class), anyDouble());
         verify(companies, never()).saveReservedCompany(any());

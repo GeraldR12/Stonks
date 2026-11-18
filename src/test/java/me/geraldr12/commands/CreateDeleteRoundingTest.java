@@ -87,7 +87,7 @@ class CreateDeleteRoundingTest {
                     verify(fixture.economy, never()).has(any(OfflinePlayer.class), anyDouble());
                     verify(fixture.economy, never()).withdrawPlayer(any(OfflinePlayer.class), anyDouble());
                     verify(fixture.economy, never()).depositPlayer(any(OfflinePlayer.class), anyDouble());
-                    verify(fixture.journal, never()).prepare(any());
+                    verify(fixture.journal, never()).prepareCurrentSchema(any());
                     assertTrue(fixture.journal.getAllPendingOrReconciliationRecords().isEmpty());
                     verify(fixture.companies, never()).reserveCompanyId(any());
                     verify(fixture.companies, never()).saveReservedCompany(any());
