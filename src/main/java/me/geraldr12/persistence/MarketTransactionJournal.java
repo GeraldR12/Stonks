@@ -124,6 +124,22 @@ public class MarketTransactionJournal {
         record.setSchemaVersion(MarketTransactionRecord.CURRENT_SCHEMA_VERSION);
         record.setLegacyMigrated(true);
         record.ensureEffects();
+        if (isCompanyLifecycle(record)) {
+            MarketTransactionStatus status = record.getStatus();
+            boolean committed = switch (status) {
+                case STATE_COMMITTED, MARKET_IMPACT_STARTED, MARKET_IMPACT_APPLIED, COMPLETED -> true;
+                default -> false;
+            };
+            List<MarketTransactionEffectType> types = companyLifecycleTypes(record.getOperation());
+            for (int i = 0; i < types.size(); i++) {
+                addLegacyEffect(record, types.get(i),
+                        committed || (i == 0 && status == MarketTransactionStatus.ECONOMY_APPLIED)
+                                ? MarketTransactionEffectState.CONFIRMED : MarketTransactionEffectState.UNKNOWN, i);
+            }
+            record.setStatus(status == MarketTransactionStatus.COMPLETED ? MarketTransactionStatus.COMPLETED
+                    : committed ? MarketTransactionStatus.COMMITTED : MarketTransactionStatus.RECONCILIATION_REQUIRED);
+            return record;
+        }
         switch (record.getStatus()) {
             case PREPARED, ABORTED, RECONCILIATION_REQUIRED -> {
                 addLegacyEffect(record, MarketTransactionEffectType.ECONOMY_DEBIT,
@@ -410,7 +426,9 @@ public class MarketTransactionJournal {
             Optional<MarketTransactionRecord> loaded = getRecord(record.getTransactionId());
             if (loaded.isEmpty()) return false;
             MarketTransactionRecord latest = loaded.get();
-            if (!isCurrentRecord(latest) || sequence != expectedSequence(latest.getOperation(), type)
+            if (!isCurrentRecord(latest) || (latest.isLegacyMigrated() && isCompanyLifecycle(latest))
+                    || expectedSequence(latest.getOperation(), type) < 0
+                    || sequence != expectedSequence(latest.getOperation(), type)
                     || latest.getEffects().stream().anyMatch(effect -> effect.getType() == type)
                     || !validEffectPayload(type, amount, quantity)
                     || !payloadMatchesQuote(latest, type, amount, quantity)) return false;
@@ -465,8 +483,36 @@ public class MarketTransactionJournal {
                 && record.getEffects().stream().noneMatch(effect -> effect.getType() == type);
     }
 
+    private boolean isCompanyLifecycle(MarketTransactionRecord record) {
+        return record != null && ("CREATE".equals(record.getOperation()) || "DELETE".equals(record.getOperation()));
+    }
+
+    private List<MarketTransactionEffectType> companyLifecycleTypes(String operation) {
+        return "CREATE".equals(operation)
+                ? List.of(MarketTransactionEffectType.ECONOMY_DEBIT, MarketTransactionEffectType.COMPANY_RECORD_CREATE,
+                        MarketTransactionEffectType.COMPANY_SHARE_REMOVAL, MarketTransactionEffectType.PLAYER_SHARE_ADD)
+                : List.of(MarketTransactionEffectType.ECONOMY_CREDIT, MarketTransactionEffectType.PLAYER_SHARE_REMOVAL,
+                        MarketTransactionEffectType.COMPANY_RECORD_DELETE);
+    }
+
+    private boolean validLegacyCompanyEffects(MarketTransactionRecord record) {
+        List<MarketTransactionEffectType> types = companyLifecycleTypes(record.getOperation());
+        if (record.getEffects().size() != types.size()) return false;
+        for (int i = 0; i < types.size(); i++) {
+            MarketTransactionEffect effect = record.getEffects().get(i);
+            if (effect == null || effect.getType() != types.get(i) || effect.getSequence() != i) return false;
+        }
+        return true;
+    }
+
     public boolean derivesCommitted(MarketTransactionRecord record) {
-        if (!isCurrentRecord(record) || !schema3EffectsValid(record)) return false;
+        if (!isCurrentRecord(record)) return false;
+        if (isCompanyLifecycle(record)) {
+            if (record.isLegacyMigrated() ? !validLegacyCompanyEffects(record) : !schema3EffectsValid(record)) return false;
+            return companyLifecycleTypes(record.getOperation()).stream().allMatch(type ->
+                    effectState(record, type) == MarketTransactionEffectState.CONFIRMED);
+        }
+        if (!schema3EffectsValid(record)) return false;
         if ("SELL".equals(record.getOperation())) {
             return effectState(record, MarketTransactionEffectType.PLAYER_SHARE_REMOVAL)
                             == MarketTransactionEffectState.CONFIRMED
@@ -485,6 +531,9 @@ public class MarketTransactionJournal {
     }
 
     public boolean derivesCompleted(MarketTransactionRecord record) {
+        if (isCompanyLifecycle(record)) {
+            return derivesCommitted(record) && record.getEffects().size() == companyLifecycleTypes(record.getOperation()).size();
+        }
         if (!isCurrentRecord(record) || !schema3EffectsValid(record)
                 || !derivesCommitted(record)
                 || effectState(record, MarketTransactionEffectType.MARKET_IMPACT)
@@ -708,7 +757,9 @@ public class MarketTransactionJournal {
             if (loaded.isEmpty()) return false;
             MarketTransactionRecord latest = loaded.get();
             if (!Objects.equals(latest.getEffects(), record.getEffects())
-                    || (latest.isSchema3() ? !derivesAborted(latest)
+                    || (latest.isSchema3() ? !(derivesAborted(latest)
+                    || (isCompanyLifecycle(latest) && !latest.isLegacyMigrated()
+                    && latest.getStatus() == MarketTransactionStatus.PREPARED && latest.getEffects().isEmpty()))
                     : latest.getStatus() != MarketTransactionStatus.PREPARED)) {
                 return false;
             }
@@ -728,7 +779,12 @@ public class MarketTransactionJournal {
                     && first.getSequence() == 10
                     && first.getState() == MarketTransactionEffectState.DEFINITE_REJECTED;
         }
-        if (!"BUY".equals(record.getOperation())) return false;
+        if ("DELETE".equals(record.getOperation())) {
+            return first.getType() == MarketTransactionEffectType.ECONOMY_CREDIT
+                    && first.getSequence() == 10
+                    && first.getState() == MarketTransactionEffectState.DEFINITE_REJECTED;
+        }
+        if (!"BUY".equals(record.getOperation()) && !"CREATE".equals(record.getOperation())) return false;
         return first.getType() == MarketTransactionEffectType.ECONOMY_DEBIT
                 && first.getSequence() == 10
                 && first.getState() == MarketTransactionEffectState.DEFINITE_REJECTED;
@@ -1253,16 +1309,21 @@ public class MarketTransactionJournal {
                 return false;
             }
         }
+        if (record.isCurrentSchema() && record.isLegacyMigrated() && isCompanyLifecycle(record)
+                && !validLegacyCompanyEffects(record)) return false;
+        if (record.isSchema3() && !record.isLegacyMigrated() && isCompanyLifecycle(record)
+                && record.getStatus() == MarketTransactionStatus.ABORTED
+                && !record.getEffects().isEmpty() && !derivesAborted(record)) return false;
         if (record.getStatus() == MarketTransactionStatus.COMMITTED
                 && !derivesCommitted(record)) {
             return false;
         }
-        if (record.isSchema3() && !record.isLegacyMigrated()
+        if (record.isSchema3() && (!record.isLegacyMigrated() || isCompanyLifecycle(record))
                 && record.getStatus() == MarketTransactionStatus.COMPLETED
                 && !derivesCompleted(record)) {
             return false;
         }
-        if (record.isCurrentSchema() && record.isLegacyMigrated()
+        if (record.isCurrentSchema() && record.isLegacyMigrated() && !isCompanyLifecycle(record)
                 && record.getStatus() == MarketTransactionStatus.COMMITTED
                 && !hasMarketImpactAttempted(record)) {
             return false;
@@ -1274,6 +1335,7 @@ public class MarketTransactionJournal {
             return true;
         }
         if (record.getStatus() == MarketTransactionStatus.COMPENSATED) {
+            if (isCompanyLifecycle(record)) return false;
             if ("SELL".equals(record.getOperation())) {
                 return derivesCompensated(record);
             }
@@ -1290,7 +1352,8 @@ public class MarketTransactionJournal {
     }
 
     private boolean validSchema3Quote(MarketTransactionRecord record) {
-        return ("BUY".equals(record.getOperation()) || "SELL".equals(record.getOperation()))
+        return ("BUY".equals(record.getOperation()) || "SELL".equals(record.getOperation())
+                || isCompanyLifecycle(record))
                 && record.getQuoteCompanyId() != null && record.getQuoteCompanyId().equals(record.getCompanyId())
                 && record.getQuotePlayerUuid() != null && record.getQuotePlayerUuid().equals(record.getPlayerUuid())
                 && record.getQuoteQuantity() != null && record.getQuoteQuantity() > 0
@@ -1314,15 +1377,28 @@ public class MarketTransactionJournal {
                         || effect.getType() == MarketTransactionEffectType.PLAYER_SHARE_REMOVAL
                         || effect.getType() == MarketTransactionEffectType.COMPANY_SHARE_ADD
                         || effect.getType() == MarketTransactionEffectType.ECONOMY_CREDIT
-                        || effect.getType() == MarketTransactionEffectType.MARKET_IMPACT)
+                        || effect.getType() == MarketTransactionEffectType.MARKET_IMPACT
+                        || effect.getType() == MarketTransactionEffectType.COMPANY_RECORD_CREATE
+                        || effect.getType() == MarketTransactionEffectType.COMPANY_RECORD_DELETE)
                         && (effect.getState() == MarketTransactionEffectState.REQUESTED
                         || effect.getState() == MarketTransactionEffectState.AMBIGUOUS
                         || effect.getState() == MarketTransactionEffectState.UNKNOWN));
     }
 
     private int expectedSequence(String operation, MarketTransactionEffectType type) {
-        if ("SELL".equals(operation)) {
-            return switch (type) {
+        if (operation == null || type == null) return -1;
+        return switch (operation) {
+            case "BUY" -> switch (type) {
+                case ECONOMY_DEBIT -> 10;
+                case COMPANY_SHARE_REMOVAL -> 20;
+                case PLAYER_SHARE_ADD -> 30;
+                case COMPANY_SHARE_RESTORATION -> 40;
+                case PLAYER_SHARE_RESTORATION -> 50;
+                case ECONOMY_REFUND -> 60;
+                case MARKET_IMPACT -> 70;
+                default -> -1;
+            };
+            case "SELL" -> switch (type) {
                 case PLAYER_SHARE_REMOVAL -> 10;
                 case COMPANY_SHARE_ADD -> 20;
                 case ECONOMY_CREDIT -> 30;
@@ -1331,16 +1407,19 @@ public class MarketTransactionJournal {
                 case MARKET_IMPACT -> 70;
                 default -> -1;
             };
-        }
-        // Default to BUY semantics mapped legacy
-        return switch (type) {
-            case ECONOMY_DEBIT -> 10;
-            case COMPANY_SHARE_REMOVAL -> 20;
-            case PLAYER_SHARE_ADD -> 30;
-            case COMPANY_SHARE_RESTORATION -> 40;
-            case PLAYER_SHARE_RESTORATION -> 50;
-            case ECONOMY_REFUND -> 60;
-            case MARKET_IMPACT -> 70;
+            case "CREATE" -> switch (type) {
+                case ECONOMY_DEBIT -> 10;
+                case COMPANY_RECORD_CREATE -> 20;
+                case COMPANY_SHARE_REMOVAL -> 30;
+                case PLAYER_SHARE_ADD -> 40;
+                default -> -1;
+            };
+            case "DELETE" -> switch (type) {
+                case ECONOMY_CREDIT -> 10;
+                case PLAYER_SHARE_REMOVAL -> 20;
+                case COMPANY_RECORD_DELETE -> 30;
+                default -> -1;
+            };
             default -> -1;
         };
     }
@@ -1371,7 +1450,8 @@ public class MarketTransactionJournal {
 
     private boolean isValidRecord(MarketTransactionRecord record) {
         return record != null
-                && (!record.isSchema3() || validSchema3Quote(record))
+                && (!record.isSchema3() || validSchema3Quote(record)
+                || (record.isLegacyMigrated() && isCompanyLifecycle(record)))
                 && record.getEffects() != null
                 && isValidTransactionId(record.getTransactionId())
                 && record.getOperation() != null
