@@ -128,6 +128,25 @@ The auction house listing tax (`/ah`, 10% by default) does not go to the account
 - Don't rename or delete `Server_Account`. Stonks and Towny find it by name. Stonks would keep its deposits as `owed` and retry, but Towny's would be lost.
 - To turn the bridge off, set `Treasury.BackServerShop: false` and restart; `/shop` then pays out of nowhere again. To stop sending fees to the account, set `Treasury.Account: ""` and run `/invest reload`.
 
+## Company funds
+
+Each company keeps its own gold in `plugins/Stonks/funds/ledger.yml`. Stonks never creates gold for a share trade:
+
+- **Gold in:** creation (price × shares; the creation tax still goes to the treasury), share purchases (the gross value; the fee goes to the treasury), owner deposits, and `ShopRevenueShare` of every sale a linked QuickShop selling shop makes (charged to the shop owner).
+- **Gold out:** share sales (the gross value; refused when the funds cannot cover it), dividends, and the owner's payout on removal.
+- **To the treasury:** bankruptcy and staff removal send all the funds to `Treasury.Account`. Without a treasury account that gold leaves the economy, as fees did before.
+
+Companies created before 2.12 start with no funds, so their shareholders can sell only once the funds hold enough. To back them, move gold from the treasury with `/invest admin funds grant <ID> <amount>`. That gold already exists, so nothing is created.
+
+| Command | What it does |
+|---|---|
+| `/invest admin funds list` | total held, gold in and out, and every pending payout |
+| `/invest admin funds grant <ID> <amount>` | moves gold from the treasury account into a company |
+| `/invest admin funds resolve <operation> paid` | the gold reached the player or the treasury; close the operation |
+| `/invest admin funds resolve <operation> returned` | the gold did not leave; give it back to the company |
+
+A pending payout pauses trading, deposits and dividends for that company. Before resolving it, check the player's balance, the treasury balance and the log line with the same operation id. Nothing is retried automatically.
+
 ## When a trade gets stuck
 
 Every buy, sell, company creation and deletion goes through a journal in `plugins/Stonks/transactions/`. If the server stops partway, that trade becomes `RECONCILIATION_REQUIRED` on the next start. Stonks then pauses trading for that player and that company, so nothing can make it worse. The player sees "Trading is paused ... Nothing was charged." when they try again.
