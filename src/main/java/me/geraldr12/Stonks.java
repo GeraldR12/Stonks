@@ -324,7 +324,9 @@ public class Stonks extends JavaPlugin {
             }
         }
         if (treasuryService != null && getConfig().getBoolean("Stonks.Treasury.BackServerShop", false)
-                && new ServerShopBridge(treasuryService, getLogger()::warning).register(this)) {
+                && new ServerShopBridge(treasuryService, getLogger()::warning,
+                player -> economy.getBalance(player), task -> getServer().getScheduler().runTask(this, task))
+                .register(this)) {
             getLogger().info("Server shop (/shop) now pays and charges through the treasury account.");
         }
     }

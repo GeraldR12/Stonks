@@ -59,7 +59,11 @@ public class TreasuryService {
     private double unbacked;
     private double pendingCredit;
     private double pendingPayout;
+    private ShopSettlement pendingShop;
     private boolean storageUnavailable;
+
+    public record ShopSettlement(String account, String player, String direction, double amount, double before) {
+    }
 
     public TreasuryService(Gateway gateway, Path ledger) {
         this.gateway = gateway;
@@ -149,10 +153,24 @@ public class TreasuryService {
     }
 
     /**
-     * Debits the treasury before ExcellentShop can pay a player.
+     * Records a backed trade before ExcellentShop runs and reserves treasury funds for a sale.
      */
-    public synchronized boolean pay(double amount) {
-        if (!enabled() || needsReview() || !Double.isFinite(amount) || amount <= 0) return false;
+    public synchronized boolean beginShop(ShopSettlement settlement) {
+        if (!enabled() || needsReview() || !gateway.account().equals(settlement.account())
+                || !Double.isFinite(settlement.amount()) || settlement.amount() <= 0
+                || !Double.isFinite(settlement.before()) || settlement.before() < 0) return false;
+        pendingShop = settlement;
+        if (!save()) return false;
+        if ("BUY".equals(settlement.direction())) return true;
+        if (pay(settlement.amount())) return true;
+        if (pendingPayout == 0 && !storageUnavailable) {
+            pendingShop = null;
+            save();
+        }
+        return false;
+    }
+
+    private boolean pay(double amount) {
         pendingPayout = amount;
         if (!save()) {
             pendingPayout = 0;
@@ -172,8 +190,34 @@ public class TreasuryService {
         return save() && ok;
     }
 
+    /**
+     * Finalizes only an observed debit/credit or a cancellation with an unchanged balance.
+     * A failed observation deliberately leaves the persisted operation for manual review.
+     */
+    public synchronized boolean finishShop(ShopSettlement settlement, boolean cancelled, double after) {
+        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0
+                || !settlement.account().equals(gateway.account()) || !Double.isFinite(after) || after < 0) {
+            return false;
+        }
+        boolean purchase = "BUY".equals(settlement.direction());
+        double expectedDelta = cancelled ? 0 : purchase ? -settlement.amount() : settlement.amount();
+        if (Double.compare(add(settlement.before(), expectedDelta), add(after, 0)) != 0) return false;
+        // A cancelled sale returns the already debited treasury funds through the existing owed ledger.
+        if ((!cancelled && purchase) || (cancelled && !purchase)) {
+            owed = add(owed, settlement.amount());
+        }
+        pendingShop = null;
+        if (!save()) return false;
+        if (owed > 0) flush();
+        return true;
+    }
+
+    public synchronized String account() {
+        return gateway.account();
+    }
+
     public synchronized boolean needsReview() {
-        return storageUnavailable || pendingCredit != 0 || pendingPayout != 0;
+        return storageUnavailable || pendingCredit != 0 || pendingPayout != 0 || pendingShop != null;
     }
 
     public synchronized double paid() {
@@ -215,6 +259,9 @@ public class TreasuryService {
             unbacked = root.get("unbacked") instanceof Number n ? n.doubleValue() : 0;
             pendingCredit = root.get("pendingCredit") instanceof Number n ? n.doubleValue() : 0;
             pendingPayout = root.get("pendingPayout") instanceof Number n ? n.doubleValue() : 0;
+            if (root.get("pendingShop") != null) {
+                pendingShop = YAML.convertValue(root.get("pendingShop"), ShopSettlement.class);
+            }
             if (needsReview()) LOG.severe("Treasury has a pending Vault operation; inspect the ledger before resuming it.");
         } catch (IOException | RuntimeException e) {
             storageUnavailable = true;
@@ -232,6 +279,7 @@ public class TreasuryService {
         root.put("unbacked", unbacked);
         root.put("pendingCredit", pendingCredit);
         root.put("pendingPayout", pendingPayout);
+        if (pendingShop != null) root.put("pendingShop", pendingShop);
         Path temporary = null;
         try {
             Files.createDirectories(ledger.getParent());

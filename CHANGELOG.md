@@ -2,6 +2,11 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.11.0-rc.2] - 2026-11-18
+
+- Backed ExcellentShop purchases credit the treasury only after the expected player debit is observed. Checkout previews and cancelled purchases have no treasury effect.
+- A late-cancelled sale with an unchanged player balance returns its reservation. An unresolved balance difference pauses backed trades and remains in the ledger after restart.
+
 ## [2.11.0-rc.1] - 2026-11-18
 
 - The market has a bankruptcy archive. Closed positions show their loss and release share capacity while keeping the original records.
