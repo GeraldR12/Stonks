@@ -260,9 +260,16 @@ public class CreateCommand implements MainCommand.SubCommand {
                                         + "CRITICAL: company creation requires reconciliation.");
                                 return true;
                             }
-                            // Only the creation tax goes to the treasury; the valuation part is refunded on delete.
-                            TreasuryService.credit(plugin.getTreasuryService(),
-                                    companyCreationTax - companySharePrice * companySharesAmount);
+                            // The creation tax goes to the treasury; the valuation part becomes the company's funds,
+                            // which back every share the owner now holds.
+                            double valuationPart = companySharePrice * companySharesAmount;
+                            TreasuryService.credit(plugin.getTreasuryService(), companyCreationTax - valuationPart);
+                            me.geraldr12.data.services.CompanyFundsService funds = plugin.getCompanyFundsService();
+                            if (funds != null && funds.enabled()
+                                    && !funds.credit(reserved.getId(), valuationPart, record.getTransactionId())) {
+                                plugin.getLogger().severe("Company funds credit for creation " + record.getTransactionId()
+                                        + " failed; " + valuationPart + " gold did not reach company " + reserved.getId() + ".");
+                            }
                             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getCreatedCompany(), companyName));
                         }
                     }

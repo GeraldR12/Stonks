@@ -55,8 +55,38 @@ public final class SellTransactionService {
         return execute(playerId, economyActor, companyId, quantity, null);
     }
 
+    /** The company-funds reservation a sale made, so the outcome can settle or release it. */
+    private static final class FundsHold {
+        String operationId;
+    }
+
     public SellTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
                                          long companyId, int quantity, MarketPricing.Quote expected) {
+        FundsHold hold = new FundsHold();
+        SellTransactionResult result = executeLocked(playerId, economyActor, companyId, quantity, expected, hold);
+        if (hold.operationId != null) finishFunds(result.status(), hold.operationId);
+        return result;
+    }
+
+    /**
+     * The gold left the company when the player was paid (or the sale committed); a sale that definitely did not
+     * happen returns it. Anything unresolved stays pending, which pauses the company for staff review.
+     */
+    private void finishFunds(SellTransactionResult.Status status, String operationId) {
+        CompanyFundsService funds = plugin.getCompanyFundsService();
+        if (funds == null) return;
+        boolean ok = switch (status) {
+            case SUCCESS, MARKET_IMPACT_FAILURE_AFTER_COMMIT -> funds.settle(operationId);
+            case RECONCILIATION_REQUIRED, BLOCKED_PENDING_REVIEW -> true;
+            default -> funds.release(operationId);
+        };
+        if (!ok) plugin.getLogger().severe("Company funds operation " + operationId
+                + " could not be finalized; the company stays paused for review.");
+    }
+
+    private SellTransactionResult executeLocked(UUID playerId, OfflinePlayer economyActor,
+                                                long companyId, int quantity, MarketPricing.Quote expected,
+                                                FundsHold hold) {
         if (playerId == null || economyActor == null || companyId < 0 || quantity <= 0) {
             return result(SellTransactionResult.Status.VALIDATION_REJECTED,
                     Math.max(0, companyId), Math.max(1, quantity), null);
@@ -112,10 +142,21 @@ public final class SellTransactionService {
                         return result(SellTransactionResult.Status.INSUFFICIENT_SHARES, companyId, quantity, null);
                     }
 
+                    String transactionId = UUID.randomUUID().toString();
+                    // The company buys the shares back with its own funds: gold is never created for a sale.
+                    CompanyFundsService funds = plugin.getCompanyFundsService();
+                    if (funds != null && funds.enabled()) {
+                        if (!funds.reserve(companyId, gross, transactionId, "SELL", playerId.toString())) {
+                            return SellTransactionResult.of(SellTransactionResult.Status.INSUFFICIENT_COMPANY_FUNDS,
+                                    companyId, quantity, null, funds.balance(companyId));
+                        }
+                        hold.operationId = transactionId;
+                    }
+
                     long quoteTimestamp = System.currentTimeMillis();
 
                     MarketTransactionRecord record = new MarketTransactionRecord();
-                    record.setTransactionId(UUID.randomUUID().toString());
+                    record.setTransactionId(transactionId);
                     record.setOperation("SELL");
                     record.setPlayerUuid(playerId.toString());
                     record.setCompanyId(companyId);

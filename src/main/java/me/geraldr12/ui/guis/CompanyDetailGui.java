@@ -62,6 +62,11 @@ public class CompanyDetailGui extends AbstractPluginGui {
             }
             lore.add(MessageFormat.format(messages.getUiInvestmentItemShares(), shares));
             var plugin = guiManager.getPlugin();
+            if (company.isTrading() && plugin != null && plugin.getCompanyFundsService() != null
+                    && plugin.getCompanyFundsService().enabled()) {
+                lore.add(MessageFormat.format(messages.getMessageByKey("uiCompanyFunds"),
+                        FormattingUtils.formatDouble(plugin.getCompanyFundsService().balance(companyId))));
+            }
             if (company.isTrading() && plugin != null && plugin.getShopLinksService() != null
                     && !plugin.getShopLinksService().linksOf(companyId).isEmpty()) {
                 long count = plugin.linkedShopTradeCount(companyId);

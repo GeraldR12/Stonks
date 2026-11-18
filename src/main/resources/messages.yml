@@ -260,3 +260,16 @@ sellCommand:
 toggleNotificationsCommand:
   description: "Toggle stock notifications."
   notificationTypeArg: "The notification type to toggle the value for."
+# Company funds (2.12)
+fundsBalance: "§7Funds of §f{0}§7: §6{1}"
+fundsDisabled: "§cCompany funds are turned off on this server."
+fundsPendingReview: "§eThis company has a payout awaiting staff review; trading and funds actions are paused."
+fundsNeedsReview: "§cCRITICAL: this funds operation needs staff review. Nothing will be retried automatically."
+fundsInvalidAmount: "§cEnter an amount the economy can pay (at least 1 unit)."
+fundsRejected: "§cThe economy refused this operation. Nothing changed."
+fundsDeposited: "§aDeposited §6{0}§a. Company funds: §6{1}"
+fundsDividendPaid: "§aPaid §6{0}§a in dividends to §f{1}§a shareholder(s). Company funds: §6{2}"
+fundsDividendTooSmall: "§cThat dividend is too small to give every shareholder at least 1 unit."
+fundsInsufficient: "§cThe company only has §6{0}§c in funds."
+fundsInsufficientForSale: "§cThe company cannot buy these shares back right now: its funds are §6{0}§c. Try fewer shares or wait for the company to earn more."
+uiCompanyFunds: "§7Company funds: §6{0}"

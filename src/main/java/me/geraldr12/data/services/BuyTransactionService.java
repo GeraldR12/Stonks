@@ -197,6 +197,7 @@ public final class BuyTransactionService {
                     }
                     if (!request(journal, record, MarketTransactionEffectType.MARKET_IMPACT, 70, 0.0, quantity)) {
                         reconcile(journal, record, "Market impact request could not be persisted");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     boolean impact;
@@ -209,10 +210,12 @@ public final class BuyTransactionService {
                             impact ? MarketTransactionEffectState.CONFIRMED : MarketTransactionEffectState.AMBIGUOUS,
                             impact ? "confirmed" : "market impact outcome is ambiguous")) {
                         reconcile(journal, record, "Market impact outcome persistence failed");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     if (!impact) {
                         reconcile(journal, record, "Market impact outcome is ambiguous");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     if (!journal.complete(record)) {
@@ -220,10 +223,21 @@ public final class BuyTransactionService {
                     }
                     // The fee part of what the player paid goes to the server treasury (if configured).
                     TreasuryService.credit(plugin.getTreasuryService(), total - gross);
+                    creditFunds(companyId, gross, record);
                     return result(BuyTransactionResult.Status.SUCCESS, companyId, quantity, record);
                     }
                 }
             }
+        }
+    }
+
+    /** The gross value the player paid becomes the company's funds, so a later sale can be paid from it. */
+    private void creditFunds(long companyId, double gross, MarketTransactionRecord record) {
+        CompanyFundsService funds = plugin.getCompanyFundsService();
+        if (funds == null || !funds.enabled()) return;
+        if (!funds.credit(companyId, gross, record.getTransactionId())) {
+            plugin.getLogger().severe("Company funds credit for transaction " + record.getTransactionId()
+                    + " failed; " + gross + " gold did not reach company " + companyId + ".");
         }
     }
 

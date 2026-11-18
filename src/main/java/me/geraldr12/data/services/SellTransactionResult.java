@@ -13,6 +13,8 @@ public record SellTransactionResult(
         VALIDATION_REJECTED,
         INSUFFICIENT_SHARES,
         FEE_EXCEEDS_VALUE,
+        /** The company's funds cannot cover the buyback; totalValue carries the funds available. */
+        INSUFFICIENT_COMPANY_FUNDS,
         DEFINITE_FAILURE,
         COMPENSATED,
         BLOCKED_PENDING_REVIEW,

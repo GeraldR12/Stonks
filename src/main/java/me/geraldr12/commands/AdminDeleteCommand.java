@@ -68,6 +68,8 @@ public class AdminDeleteCommand implements MainCommand.SubCommand {
                 player.sendMessage(messages.getPluginPrefix() + "Unable to delete company.");
                 return true;
             }
+            me.geraldr12.data.services.CompanyFundsActions.closeToTreasury(plugin,
+                    plugin.getCompanyFundsService(), companyId, "ADMIN_DELETE");
             playersService.cleanUpInvestmentsForOnlinePlayers(companiesService.getAllCompanies());
 
             player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(messages.getDeletedCompany(), companyToDelete.getName()));

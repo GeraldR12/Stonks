@@ -1,5 +1,8 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.data.services.CompanyFundsActions;
+import me.geraldr12.data.services.CompanyFundsService;
+
 import me.geraldr12.Stonks;
 import me.geraldr12.economy.VaultEconomyMutationGateway;
 import me.geraldr12.data.dao.CompanyDao;
@@ -118,6 +121,17 @@ public class DeleteCommand implements MainCommand.SubCommand {
                                 + "Unable to calculate a valid company valuation.");
                         return true;
                     }
+                    // With company funds the owner, who holds every share, receives the company's cash.
+                    // No gold is created from the share price.
+                    CompanyFundsService funds = plugin.getCompanyFundsService();
+                    boolean backed = funds != null && funds.enabled();
+                    if (backed) {
+                        double available = CompanyFundsService.floor(funds.balance(companyId), fractionalDigits);
+                        if (!(available > 0)) {
+                            return deleteWithoutPayout(player, messages, company, funds);
+                        }
+                        valuation = available;
+                    }
 
                     MarketTransactionRecord record = transaction(playerId, companyId,
                             company.getTotalShares(), valuation);
@@ -133,8 +147,16 @@ public class DeleteCommand implements MainCommand.SubCommand {
                         return true;
                     }
 
+                    if (backed && !funds.reserve(companyId, valuation, record.getTransactionId(), "DELETE",
+                            playerId.toString())) {
+                        journal.abort(record, "Company funds could not be reserved");
+                        player.sendMessage(messages.getPluginPrefix()
+                                + "Unable to prepare the transaction; try again later.");
+                        return true;
+                    }
                     if (!journal.requestEffect(record, MarketTransactionEffectType.ECONOMY_CREDIT,
                             10, valuation, company.getTotalShares())) {
+                        if (backed) funds.release(record.getTransactionId());
                         journal.abort(record, "Credit request could not be persisted before mutation");
                         player.sendMessage(messages.getPluginPrefix()
                                 + "Unable to prepare the transaction; try again later.");
@@ -170,8 +192,13 @@ public class DeleteCommand implements MainCommand.SubCommand {
                             journal.markReconciliationRequired(record, "Credit rejection persistence failed");
                             return critical(player, messages);
                         }
+                        if (backed) funds.release(record.getTransactionId());
                         player.sendMessage(messages.getPluginPrefix() + "Unable to complete the payment.");
                         return true;
+                    }
+                    if (backed && !funds.settle(record.getTransactionId())) {
+                        plugin.getLogger().severe("Company funds payout " + record.getTransactionId()
+                                + " was paid but could not be settled; review the funds ledger.");
                     }
                     if (!recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_CREDIT,
                             MarketTransactionEffectState.CONFIRMED, "confirmed")) {
@@ -196,6 +223,7 @@ public class DeleteCommand implements MainCommand.SubCommand {
                                 "Completion marker failed after deletion commit");
                         return critical(player, messages);
                     }
+                    if (backed) CompanyFundsActions.closeToTreasury(plugin, funds, companyId, "DELETE");
                     player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
                             messages.getSoldActions(), company.getTotalShares(), valuation));
                     player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
@@ -205,6 +233,28 @@ public class DeleteCommand implements MainCommand.SubCommand {
                 }
             }
         }
+    }
+
+    /**
+     * Removes a company that has no cash, without paying anything: there is no gold to return and none is
+     * created. Runs under the same locks as a paid deletion.
+     */
+    private boolean deleteWithoutPayout(Player player, Messages messages, CompanyDao company,
+                                        CompanyFundsService funds) {
+        long companyId = company.getId();
+        if (!plugin.getPlayersService().removeSharesFromPlayer(player.getUniqueId(), companyId,
+                company.getTotalShares())) {
+            player.sendMessage(messages.getPluginPrefix() + "Unable to delete company.");
+            return true;
+        }
+        if (!plugin.getCompaniesService().deleteCompany(companyId)) {
+            plugin.getLogger().severe("Company " + companyId + " lost its owner's shares but could not be deleted.");
+            return critical(player, messages);
+        }
+        CompanyFundsActions.closeToTreasury(plugin, funds, companyId, "DELETE");
+        player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
+                messages.getDeletedCompany(), company.getName()));
+        return true;
     }
 
     private boolean persistEffect(MarketTransactionJournal journal, MarketTransactionRecord record,

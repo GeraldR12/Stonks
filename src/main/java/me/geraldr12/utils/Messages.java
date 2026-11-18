@@ -9,6 +9,18 @@ import lombok.Getter;
 public class Messages {
 
     private static final java.util.Map<String, String> UI_DEFAULTS = java.util.Map.ofEntries(
+            java.util.Map.entry("fundsBalance", "§7Funds of §f{0}§7: §6{1}"),
+            java.util.Map.entry("fundsDisabled", "§cCompany funds are turned off on this server."),
+            java.util.Map.entry("fundsPendingReview", "§eThis company has a payout awaiting staff review; trading and funds actions are paused."),
+            java.util.Map.entry("fundsNeedsReview", "§cCRITICAL: this funds operation needs staff review. Nothing will be retried automatically."),
+            java.util.Map.entry("fundsInvalidAmount", "§cEnter an amount the economy can pay (at least 1 unit)."),
+            java.util.Map.entry("fundsRejected", "§cThe economy refused this operation. Nothing changed."),
+            java.util.Map.entry("fundsDeposited", "§aDeposited §6{0}§a. Company funds: §6{1}"),
+            java.util.Map.entry("fundsDividendPaid", "§aPaid §6{0}§a in dividends to §f{1}§a shareholder(s). Company funds: §6{2}"),
+            java.util.Map.entry("fundsDividendTooSmall", "§cThat dividend is too small to give every shareholder at least 1 unit."),
+            java.util.Map.entry("fundsInsufficient", "§cThe company only has §6{0}§c in funds."),
+            java.util.Map.entry("fundsInsufficientForSale", "§cThe company cannot buy these shares back right now: its funds are §6{0}§c. Try fewer shares or wait for the company to earn more."),
+            java.util.Map.entry("uiCompanyFunds", "§7Company funds: §6{0}"),
             java.util.Map.entry("uiShopObserved", "§7Linked shop trades in the last hour: §f{0}"),
             java.util.Map.entry("uiShopObservedHint", "§7Live activity since server start, with no effect on price."),
             java.util.Map.entry("uiTradeCustomBuy", "§aBuy a custom amount"),

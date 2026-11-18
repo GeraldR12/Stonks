@@ -178,6 +178,15 @@ public class TreasuryService {
         return false;
     }
 
+    /**
+     * Takes {@code amount} out of the treasury account so staff can put it into a company's funds.
+     * Refused when the account cannot cover it; an unconfirmed withdrawal pauses the treasury like a shop payout.
+     */
+    public synchronized boolean grant(double amount) {
+        if (!canPay(amount) || !(amount > 0)) return false;
+        return pay(amount);
+    }
+
     private boolean pay(double amount) {
         pendingPayout = amount;
         if (!save()) {
