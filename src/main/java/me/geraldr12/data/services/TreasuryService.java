@@ -213,13 +213,26 @@ public class TreasuryService {
      * for manual review.
      */
     public synchronized boolean finishShopReceipted(ShopSettlement settlement, UUID receiptId) {
-        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0 || receiptId == null
-                || !settlement.account().equals(gateway.account())) {
+        return finishShopReceipted(settlement, receiptId == null ? null : List.of(receiptId));
+    }
+
+    /**
+     * Same as {@link #finishShopReceipted(ShopSettlement, UUID)} for a trade that TNE paid in several transactions
+     * (ExcellentShop pays one per shop of the sold items): every receipt must be new.
+     */
+    public synchronized boolean finishShopReceipted(ShopSettlement settlement, List<UUID> receiptIds) {
+        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0 || receiptIds == null
+                || receiptIds.isEmpty() || !settlement.account().equals(gateway.account())) {
             return false;
         }
-        String id = receiptId.toString();
-        if (shopReceipts.contains(id)) return false;
-        shopReceipts.addLast(id);
+        List<String> ids = new ArrayList<>();
+        for (UUID receiptId : receiptIds) {
+            if (receiptId == null) return false;
+            String id = receiptId.toString();
+            if (shopReceipts.contains(id) || ids.contains(id)) return false;
+            ids.add(id);
+        }
+        ids.forEach(shopReceipts::addLast);
         while (shopReceipts.size() > RECEIPT_MEMORY) shopReceipts.removeFirst();
         if ("BUY".equals(settlement.direction())) owed = add(owed, settlement.amount());
         pendingShop = null;

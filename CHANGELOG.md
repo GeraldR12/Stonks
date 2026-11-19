@@ -2,6 +2,10 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.12.0-rc.3] - 2026-11-19
+
+- Fixed: a backed `/shop` sale of items from more than one shop (for example `/sellgui` with building blocks and farm drops) was left pending and paused the server shop. ExcellentShop pays one transaction per shop of the sold items, and only the first TNE receipt was compared with the whole sale. The player's successful receipts in the trade are now added up and must match it exactly; failed receipts moved nothing and are left out.
+
 ## [2.12.0-rc.2] - 2026-11-19
 
 - Fixed: a backed `/shop` trade by a player with gold in the ender chest was left pending. TNE lists every holding at the start of a transaction but only the touched ones at the end, so the untouched ender chest was counted as spent and the receipt never matched. Holdings are now compared one by one.

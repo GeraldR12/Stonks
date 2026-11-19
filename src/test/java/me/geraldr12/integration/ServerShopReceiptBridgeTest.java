@@ -183,7 +183,48 @@ public class ServerShopReceiptBridgeTest {
     }
 
     @Test
-    void firstReceiptOfThePlayerDecides() {
+    void saleWithItemsFromSeveralShopsAddsUpItsReceipts() {
+        // Production 19/11: /sellgui with building blocks (worth 0) and bamboo; ExcellentShop paid one transaction
+        // per shop, and the first TNE receipt moved 0.
+        Gateway gateway = new Gateway();
+        gateway.balance = 100;
+        ServerShopBridge bridge = bridge(gateway, true);
+        trade(bridge, "SELL", 26, player(ID, true));
+        bridge.onReceipt(receipt(UUID.randomUUID(), ID, true, "0"));
+        bridge.onReceipt(receipt(UUID.randomUUID(), ID, true, "26"));
+        tick(26);
+        assertEquals(List.of("-26.0"), gateway.moves);
+        assertFalse(needsReview(gateway));
+        assertTrue(warnings.isEmpty(), warnings::toString);
+    }
+
+    @Test
+    void purchasePaidInTwoReceiptsIsConfirmedByTheirSum() {
+        Gateway gateway = new Gateway();
+        ServerShopBridge bridge = bridge(gateway, true);
+        trade(bridge, "BUY", 45, player(ID, true));
+        bridge.onReceipt(receipt(UUID.randomUUID(), ID, true, "-40"));
+        bridge.onReceipt(receipt(UUID.randomUUID(), ID, true, "-5"));
+        tick(-45);
+        assertEquals(List.of("+45.0"), gateway.moves);
+        assertFalse(needsReview(gateway));
+    }
+
+    @Test
+    void sameReceiptTwiceInOneTradeIsADivergence() {
+        Gateway gateway = new Gateway();
+        ServerShopBridge bridge = bridge(gateway, true);
+        UUID id = UUID.randomUUID();
+        trade(bridge, "BUY", 10, player(ID, true));
+        bridge.onReceipt(receipt(id, ID, true, "-5"));
+        bridge.onReceipt(receipt(id, ID, true, "-5"));
+        tick(-10);
+        assertTrue(gateway.moves.isEmpty());
+        assertTrue(needsReview(gateway));
+    }
+
+    @Test
+    void receiptsThatAddUpToMoreThanTheTradeAreADivergence() {
         Gateway gateway = new Gateway();
         ServerShopBridge bridge = bridge(gateway, true);
         trade(bridge, "BUY", 45, player(ID, true));
@@ -327,7 +368,7 @@ public class ServerShopReceiptBridgeTest {
         assertTrue(treasury.beginShop(open));
         var copy = new TreasuryService.ShopSettlement("Server_Account", ID.toString(), "BUY", 10, 500);
         assertFalse(treasury.finishShopReceipted(copy, UUID.randomUUID()));
-        assertFalse(treasury.finishShopReceipted(open, null));
+        assertFalse(treasury.finishShopReceipted(open, (UUID) null));
         assertTrue(treasury.finishShopReceipted(open, UUID.randomUUID()));
         assertFalse(treasury.needsReview());
     }
