@@ -92,6 +92,49 @@ public class TneReceiptSourceTest {
         assertEquals("Vault", receipt.source());
     }
 
+    public record HandledEntry(UUID getCurrency, BigDecimal getAmount, String getRegion, String getHandler) { }
+
+    public record HandledParticipant(UUID getId, List<HandledEntry> getStartingBalances,
+                                     List<HandledEntry> getEndingBalances) { }
+
+    public record HandledReceipt(UUID getId, String getSource, HandledParticipant getFrom, Object getTo) { }
+
+    public record HandledResult(boolean isSuccessful, String getMessage, Optional<HandledReceipt> getReceipt) { }
+
+    public record HandledCallback(HandledResult result) {
+        public String name() { return "transaction_post"; }
+    }
+
+    @Test
+    void untouchedEnderChestIsNotCountedAsSpent() throws Exception {
+        // Production 19/11: 9204 G = 2304 in the inventory + 6900 in the ender chest. A 1161 G purchase only
+        // touched the inventory, and TNE's ending balances listed only that holding.
+        CallbackManager manager = new CallbackManager();
+        attached(manager);
+        HandledEntry inventoryBefore = new HandledEntry(GOLD, new BigDecimal("2304"), "earth", "tne:INVENTORY_HOLDINGS");
+        HandledEntry ender = new HandledEntry(GOLD, new BigDecimal("6900"), "earth", "tne:ENDER_HOLDINGS");
+        HandledEntry inventoryAfter = new HandledEntry(GOLD, new BigDecimal("1143"), "earth", "tne:INVENTORY_HOLDINGS");
+        HandledParticipant player = new HandledParticipant(PLAYER, List.of(inventoryBefore, ender), List.of(inventoryAfter));
+        manager.fire(new HandledCallback(new HandledResult(true, "ok",
+                Optional.of(new HandledReceipt(UUID.randomUUID(), "Vault", player, null)))));
+        assertEquals(1, delivered.size());
+        assertEquals(0, new BigDecimal("-1161").compareTo(delivered.getFirst().delta()));
+    }
+
+    @Test
+    void changeInSeveralHoldingsOfOneCurrencyIsSummed() throws Exception {
+        CallbackManager manager = new CallbackManager();
+        attached(manager);
+        HandledParticipant player = new HandledParticipant(PLAYER,
+                List.of(new HandledEntry(GOLD, new BigDecimal("100"), "earth", "inv"),
+                        new HandledEntry(GOLD, new BigDecimal("50"), "earth", "ender")),
+                List.of(new HandledEntry(GOLD, new BigDecimal("0"), "earth", "inv"),
+                        new HandledEntry(GOLD, new BigDecimal("20"), "earth", "ender")));
+        manager.fire(new HandledCallback(new HandledResult(true, "ok",
+                Optional.of(new HandledReceipt(UUID.randomUUID(), "Vault", player, null)))));
+        assertEquals(0, new BigDecimal("-130").compareTo(delivered.getFirst().delta()));
+    }
+
     @Test
     void failedTransactionIsStillDeliveredAsFailed() throws Exception {
         CallbackManager manager = new CallbackManager();
