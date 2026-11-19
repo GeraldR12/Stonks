@@ -11,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -28,8 +29,9 @@ import java.util.function.ToDoubleFunction;
  * Player chest shops (ExcellentShop's own "chest_shop" module) are left alone; they already trade between players.</p>
  *
  * <p>With TNE receipts ({@link TneReceiptSource}) the player's side is settled by TNE itself: once the trade can no
- * longer be cancelled (MONITOR), the first TNE receipt for that player in the same call stack decides it, and it
- * confirms only a successful transaction that moved exactly the trade's gold. Without TNE the bridge falls back to
+ * longer be cancelled (MONITOR), the TNE receipts for that player in the same call stack decide it: ExcellentShop
+ * pays one transaction per shop of the traded items, so the successful receipts must add up to exactly the trade's
+ * gold. A failed receipt moved nothing and does not count. Without TNE the bridge falls back to
  * comparing the player's balance on the next tick. Items are outside this contract: nothing proves them
  * synchronously.</p>
  */
@@ -60,7 +62,9 @@ public class ServerShopBridge implements Listener {
         final UUID player;
         final BigDecimal expected;
         boolean armed;
-        UUID confirmed;
+        final List<UUID> receipts = new ArrayList<>();
+        BigDecimal moved = BigDecimal.ZERO;
+        boolean failed;
         String divergence;
 
         Wait(TreasuryService.ShopSettlement settlement, UUID player) {
@@ -191,18 +195,22 @@ public class ServerShopBridge implements Listener {
         wait.armed = true;
     }
 
-    /** The first TNE receipt for an armed player decides that trade; receipts for anyone else are ignored. */
+    /**
+     * Adds a TNE receipt of an armed player to that trade; receipts for anyone else are ignored. The trade is decided
+     * on the next tick, when every receipt of its call stack has arrived.
+     */
     public void onReceipt(TneReceiptSource.Receipt receipt) {
         // Off the server thread it is not our call stack: it cannot be this trade and must not touch the maps.
         if (receipt == null || receipt.participant() == null || receipt.offThread()) return;
-        Wait wait = armed.remove(receipt.participant());
+        Wait wait = armed.get(receipt.participant());
         if (wait == null) return;
         if (!receipt.successful()) {
-            wait.divergence = "TNE reported the transaction as failed";
-        } else if (receipt.delta() == null || receipt.delta().compareTo(wait.expected) != 0) {
-            wait.divergence = "TNE moved " + receipt.delta() + " instead of " + wait.expected;
+            wait.failed = true;
+        } else if (receipt.delta() == null) {
+            if (wait.divergence == null) wait.divergence = "a TNE receipt moved more than one currency";
         } else {
-            wait.confirmed = receipt.receiptId();
+            wait.moved = wait.moved.add(receipt.delta());
+            wait.receipts.add(receipt.receiptId());
         }
     }
 
@@ -217,9 +225,13 @@ public class ServerShopBridge implements Listener {
                 reason = "the player's balance did not change as expected";
             } else if (wait.divergence != null) {
                 reason = wait.divergence;
-            } else if (wait.confirmed != null) {
-                if (treasury.finishShopReceipted(settlement, wait.confirmed)) return;
-                reason = "TNE receipt " + wait.confirmed + " could not be recorded (repeated, or storage failed)";
+            } else if (!wait.receipts.isEmpty() && wait.moved.compareTo(wait.expected) == 0) {
+                if (treasury.finishShopReceipted(settlement, wait.receipts)) return;
+                reason = "TNE receipts " + wait.receipts + " could not be recorded (repeated, or storage failed)";
+            } else if (!wait.receipts.isEmpty() || wait.failed) {
+                reason = (wait.failed ? "TNE reported a transaction as failed; " : "")
+                        + "TNE moved " + wait.moved + " instead of " + wait.expected
+                        + " in " + wait.receipts.size() + " receipt(s)";
             } else if (!wait.armed && event.isCancelled()) {
                 if (treasury.finishShop(settlement, true, balance.applyAsDouble(player))) return;
                 reason = "the trade was cancelled but the player's balance changed";
