@@ -2,6 +2,10 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.12.0-rc.2] - 2026-11-19
+
+- Fixed: a backed `/shop` trade by a player with gold in the ender chest was left pending. TNE lists every holding at the start of a transaction but only the touched ones at the end, so the untouched ender chest was counted as spent and the receipt never matched. Holdings are now compared one by one.
+
 ## [2.12.0-rc.1] - 2026-11-18
 
 - Each company now has funds. The gold paid to create a company and to buy its shares goes into them, and selling shares is paid out of them. A sale the funds cannot cover is refused before any share moves. Stonks no longer creates or destroys gold in share trades.

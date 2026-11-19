@@ -117,8 +117,17 @@ public final class TneReceiptSource {
 
     /** Per-currency difference; a receipt that moved more than one currency cannot confirm a single trade. */
     static BigDecimal delta(Object starting, Object ending) throws ReflectiveOperationException {
+        Map<String, BigDecimal> before = new LinkedHashMap<>();
+        Map<String, BigDecimal> after = new LinkedHashMap<>();
+        Map<String, UUID> currencyOf = new LinkedHashMap<>();
+        if (!holdings(starting, before, currencyOf) || !holdings(ending, after, currencyOf)) return null;
+        // TNE lists every holding of the account at the start (inventory, ender chest, ...) but only the
+        // holdings the transaction touched at the end, so an untouched holding must not count as spent.
         Map<UUID, BigDecimal> change = new LinkedHashMap<>();
-        if (!sum(starting, change, -1) || !sum(ending, change, 1)) return null;
+        for (Map.Entry<String, BigDecimal> entry : after.entrySet()) {
+            BigDecimal start = before.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            change.merge(currencyOf.get(entry.getKey()), entry.getValue().subtract(start), BigDecimal::add);
+        }
         BigDecimal moved = BigDecimal.ZERO;
         int currencies = 0;
         for (BigDecimal value : change.values()) {
@@ -130,16 +139,27 @@ public final class TneReceiptSource {
         return currencies > 1 ? null : moved;
     }
 
-    private static boolean sum(Object entries, Map<UUID, BigDecimal> change, int sign)
+    /** Amounts keyed by currency, region and holding handler (TNE's inventory, ender chest, virtual...). */
+    private static boolean holdings(Object entries, Map<String, BigDecimal> amounts, Map<String, UUID> currencyOf)
             throws ReflectiveOperationException {
         if (!(entries instanceof List<?> list)) return false;
         for (Object entry : list) {
             if (entry == null) return false;
             if (!(call(entry, "getCurrency") instanceof UUID currency)
                     || !(call(entry, "getAmount") instanceof BigDecimal amount)) return false;
-            change.merge(currency, sign < 0 ? amount.negate() : amount, BigDecimal::add);
+            String key = currency + "|" + optional(entry, "getRegion") + "|" + optional(entry, "getHandler");
+            amounts.merge(key, amount, BigDecimal::add);
+            currencyOf.put(key, currency);
         }
         return true;
+    }
+
+    private static String optional(Object target, String name) throws ReflectiveOperationException {
+        try {
+            return String.valueOf(call(target, name));
+        } catch (NoSuchMethodException e) {
+            return "";
+        }
     }
 
     private static Object unwrap(Object value) {
