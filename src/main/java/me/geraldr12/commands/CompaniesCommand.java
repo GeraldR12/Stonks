@@ -37,7 +37,8 @@ public class CompaniesCommand implements MainCommand.SubCommand {
             return true;
         }
 
-        List<CompanyDao> companiesList = companiesService.getAllCompanies();
+        List<CompanyDao> companiesList = companiesService.getAllCompanies().stream()
+                .filter(CompanyDao::isTrading).toList();
 
         player.sendMessage(messages.getPluginHeader());
         companiesList.forEach(company -> printCompanyDetails(player, messages, company));

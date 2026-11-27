@@ -38,12 +38,11 @@ class MainMenuGuiTest {
         var buttons = layout.getPage(0);
         Map<Integer, PluginGuiType> destinations = Map.of(10, PluginGuiType.COMPANIES_GUI,
                 12, PluginGuiType.PORTFOLIO_GUI, 14, PluginGuiType.PLAYER_COMPANIES_GUI,
-                16, PluginGuiType.NOTIFICATIONS_GUI);
+                16, PluginGuiType.NOTIFICATIONS_GUI, 22, PluginGuiType.GUIDE_GUI);
         destinations.forEach((slot, destination) -> {
             buttons.get(slot).getAction().accept(player, ClickType.LEFT);
             verify(manager).navigate(player, destination);
         });
-        assertNull(buttons.get(22).getAction());
         buttons.get(26).getAction().accept(player, ClickType.LEFT);
         verify(manager).close(player);
     }

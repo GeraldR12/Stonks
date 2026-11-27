@@ -3,6 +3,7 @@ package me.geraldr12.ui;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.util.*;
+import java.util.function.Consumer;
 import lombok.Getter;
 import me.geraldr12.Stonks;
 import me.geraldr12.data.services.CompaniesService;
@@ -46,6 +47,7 @@ public class GuiManager {
     public void navigateMainMenu(Player player) {
         AbstractPluginGui main = createGui(PluginGuiType.MAIN_MENU_GUI, player);
         if (!main.canOpen()) return;
+        menuListener.clearInput(player);
         playerStack.remove(player.getUniqueId());
         navigate(player, main);
     }
@@ -91,6 +93,20 @@ public class GuiManager {
         if (callback != null) callback.run();
     }
 
+    public void onQuit(Player player) {
+        MenuHolder holder = openMenus.get(player.getUniqueId());
+        if (holder != null) onClose(player, holder);
+        else playerStack.remove(player.getUniqueId());
+    }
+
+    public void openMarketTab(Player player, boolean archive) {
+        var tab = new CompaniesGui(player, this, messages, archive);
+        if (!tab.canOpen()) return;
+        var stack = playerStack.get(player.getUniqueId());
+        if (stack != null && stack.peek() instanceof CompaniesGui) stack.pop();
+        navigate(player, tab);
+    }
+
     private void refreshOpenMenus() {
         for (MenuHolder holder : new ArrayList<>(openMenus.values())) {
             Player player = holder.getMenu().getPlayer();
@@ -107,6 +123,8 @@ public class GuiManager {
             case MAIN_MENU_GUI -> new MainMenuGui(player, this, messages);
             case PORTFOLIO_GUI -> new PortfolioGui(player, this, messages);
             case COMPANIES_GUI -> new CompaniesGui(player, this, messages);
+            case BANKRUPT_COMPANIES_GUI -> new CompaniesGui(player, this, messages, true);
+            case GUIDE_GUI -> new GuideGui(player, this, messages);
             case NOTIFICATIONS_GUI -> new NotificationsGui(player, this, messages);
             case PLAYER_COMPANIES_GUI -> new PlayerCompaniesGui(player, this, companiesService, messages);
         };
@@ -114,6 +132,41 @@ public class GuiManager {
 
     public void openCompanyDetailMenu(Player player, long companyId) {
         navigate(player, new CompanyDetailGui(player, this, messages, companyId));
+    }
+
+    public void openTradeQuote(Player player, long companyId, int quantity, boolean buy) {
+        if (!player.hasPermission("stonks.use")) {
+            player.sendMessage(messages.getMessageByKey("uiTradePermission"));
+            return;
+        }
+        navigate(player, new TradeQuoteGui(player, this, messages, companyId, quantity, buy));
+    }
+
+    public void openCompanyHistory(Player player, long companyId) {
+        navigate(player, new CompanyHistoryGui(player, this, messages, companyId));
+    }
+
+    public void openCompanyCreation(Player player) {
+        navigate(player, new CreateCompanyGui(player, this, messages));
+    }
+
+    public void prompt(AbstractPluginGui menu, String message, Consumer<String> response) {
+        Player player = menu.getPlayer();
+        UUID id = player.getUniqueId();
+        if (openMenus.get(id) != menu.getHolder()) return;
+        openMenus.remove(id);
+        if (openMenus.isEmpty() && refreshTask != null) {
+            refreshTask.cancel();
+            refreshTask = null;
+        }
+        player.closeInventory();
+        menuListener.expectInput(player, input -> {
+            Deque<AbstractPluginGui> stack = playerStack.get(id);
+            if (stack == null || stack.peek() != menu || !menu.canOpen()) return;
+            show(player, menu);
+            if (!input.equalsIgnoreCase("cancel")) response.accept(input);
+        });
+        player.sendMessage(messages.getMessageByKey(message));
     }
 
     public void openConfirmDeleteMenu(Player player, long companyId) {

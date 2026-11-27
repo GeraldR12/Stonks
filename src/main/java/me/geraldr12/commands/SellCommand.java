@@ -58,9 +58,13 @@ public class SellCommand implements MainCommand.SubCommand {
             case SUCCESS -> MessageFormat.format(plugin.getMessages().getSoldActions(), result.quantity(),
                     Double.isFinite(result.totalValue())
                             ? me.geraldr12.utils.FormattingUtils.formatDouble(result.totalValue()) : "?");
+            case QUOTE_CHANGED -> plugin.getMessages().getMessageByKey("uiQuoteChanged");
             case VALIDATION_REJECTED -> plugin.getMessages().getInsufficientActions();
             case INSUFFICIENT_SHARES -> plugin.getMessages().getPlayerNoActions();
             case FEE_EXCEEDS_VALUE -> "This sale is too small: its value does not cover the minimum trading fee.";
+            case INSUFFICIENT_COMPANY_FUNDS -> MessageFormat.format(
+                    plugin.getMessages().getMessageByKey("fundsInsufficientForSale"),
+                    me.geraldr12.utils.FormattingUtils.formatDouble(Math.max(0, result.totalValue())));
             case DEFINITE_FAILURE -> "Unable to complete the sale.";
             case COMPENSATED -> "Sale could not be completed; your shares were restored.";
             case BLOCKED_PENDING_REVIEW -> "Trading is paused for this company or your account: an earlier transaction is awaiting administrator review. Nothing was charged.";
@@ -70,10 +74,18 @@ public class SellCommand implements MainCommand.SubCommand {
         };
     }
 
+    public boolean confirm(Player player, long companyId, int quantity,
+                           me.geraldr12.data.services.MarketPricing.Quote quote) {
+        var result = new SellTransactionService(plugin).execute(player.getUniqueId(), player, companyId, quantity, quote);
+        player.sendMessage(plugin.getMessages().getPluginPrefix() + message(result));
+        return result.status() != SellTransactionResult.Status.QUOTE_CHANGED;
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
             return plugin.getCompaniesService().getAllCompanies().stream()
+                    .filter(me.geraldr12.data.dao.CompanyDao::isTrading)
                     .map(company -> String.valueOf(company.getId()))
                     .collect(Collectors.toList());
         }

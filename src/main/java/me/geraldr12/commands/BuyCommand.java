@@ -64,6 +64,7 @@ public class BuyCommand implements MainCommand.SubCommand {
         return switch (result.status()) {
             case SHARE_LIMIT_EXCEEDED -> "You've reached the share limit. Nothing was charged.";
             case SUCCESS -> MessageFormat.format(plugin.getMessages().getBoughtActions(), result.quantity());
+            case QUOTE_CHANGED -> plugin.getMessages().getMessageByKey("uiQuoteChanged");
             case VALIDATION_REJECTED -> plugin.getMessages().getInvalidCompany();
             case INSUFFICIENT_FUNDS -> MessageFormat.format(plugin.getMessages().getInsufficientMoney(),
                     me.geraldr12.utils.FormattingUtils.formatDouble(result.totalValue()));
@@ -76,10 +77,20 @@ public class BuyCommand implements MainCommand.SubCommand {
         };
     }
 
+    public boolean confirm(Player player, long companyId, int quantity,
+                           me.geraldr12.data.services.MarketPricing.Quote quote) {
+        var result = new BuyTransactionService(plugin).execute(player.getUniqueId(), player, companyId, quantity, quote);
+        player.sendMessage(plugin.getMessages().getPluginPrefix()
+                + (result.status() == BuyTransactionResult.Status.SHARE_LIMIT_EXCEEDED
+                ? shareLimitMessage(player) : message(result)));
+        return result.status() != BuyTransactionResult.Status.QUOTE_CHANGED;
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
             return plugin.getCompaniesService().getAllCompanies().stream()
+                    .filter(me.geraldr12.data.dao.CompanyDao::isTrading)
                     .map(company -> String.valueOf(company.getId()))
                     .collect(Collectors.toList());
         }

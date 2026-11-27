@@ -89,13 +89,17 @@ public class InterestRateScheduler extends BukkitRunnable {
             double newSharesQuote;
             synchronized (MarketTransactionLocks.company(company.getId())) {
                 CompanyDao current = companiesService.getCompanyById(company.getId());
-                if (current == null || current.isBankrupt()) {
+                if (current == null || !current.isTrading()) {
                     if (current != null && current.isBankrupt()) {
                         updateSigns(current.getId());
                     }
                     return;
                 }
 
+                if (journal.getUnresolvedRecords().stream().anyMatch(record ->
+                        Long.valueOf(current.getId()).equals(record.getCompanyId()))) {
+                    return;
+                }
                 oldSharePrice = current.getCurrentSharePrice();
                 StocksRandomizer stocksRandomizer = new StocksRandomizer(
                         current.getRisk(), current.getInitialSharePrice());
@@ -108,7 +112,10 @@ public class InterestRateScheduler extends BukkitRunnable {
                 SizedStack<QuoteDao> history = current.getHistoric() == null
                         ? new SizedStack<>(500)
                         : current.getHistoric().fromList(new ArrayList<>(current.getHistoric())); // oldest first, as stored
-                history.push(new QuoteDao(newSharesQuote, newSharePrice, System.currentTimeMillis()));
+                long updatedAt = System.currentTimeMillis();
+                boolean crashed = newSharePrice == 0;
+                if (crashed) newSharesQuote = -1;
+                history.push(new QuoteDao(newSharesQuote, newSharePrice, updatedAt));
                 CompanyDao snapshot = CompanyDao.builder()
                         .id(current.getId())
                         .name(current.getName())
@@ -121,7 +128,9 @@ public class InterestRateScheduler extends BukkitRunnable {
                         .availableShares(current.getAvailableShares())
                         .historic(history)
                         .ownerUuid(current.getOwnerUuid())
-                        .bankrupt(newSharePrice <= 0 || current.isBankrupt())
+                        .bankrupt(crashed)
+                        .bankruptcyTime(crashed ? updatedAt : null)
+                        .bankruptcyPreviousPrice(crashed ? oldSharePrice : null)
                         .build();
 
                 if (!companiesService.persistSchedulerSnapshot(snapshot)) {
@@ -141,6 +150,9 @@ public class InterestRateScheduler extends BukkitRunnable {
                         completedCompany, oldSharePrice, newSharePrice, newSharesQuote));
             }
             if (bankrupt) {
+                // Investors lose their shares; the company's cash goes to the treasury instead of vanishing.
+                me.geraldr12.data.services.CompanyFundsActions.closeToTreasury(plugin,
+                        plugin.getCompanyFundsService(), completedCompany.getId(), "BANKRUPT");
                 if (plugin.getServer() != null && plugin.getServer().getPluginManager() != null) {
                     plugin.getServer().getPluginManager().callEvent(new CompanyBankruptEvent(completedCompany));
                 }
@@ -158,6 +170,8 @@ public class InterestRateScheduler extends BukkitRunnable {
 
     private void handleBankruptcy(CompanyDao company) {
         processBankruptCompany(company);
+        me.geraldr12.data.services.CompanyFundsActions.closeToTreasury(plugin,
+                plugin.getCompanyFundsService(), company.getId(), "BANKRUPT");
 
         CompanyDao bankruptCompany = companiesService.getCompanyById(company.getId());
         if (bankruptCompany == null || !bankruptCompany.isBankrupt()

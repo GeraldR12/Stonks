@@ -7,9 +7,11 @@ import me.geraldr12.integration.AdvancedJobsAdapter;
 import me.geraldr12.integration.CommerceActivityCollector;
 import me.geraldr12.integration.ShopLookup;
 import me.geraldr12.integration.ServerShopBridge;
+import me.geraldr12.integration.TneReceiptSource;
 import me.geraldr12.data.services.ShopLinksService;
 import me.geraldr12.data.services.PriceHistoryLog;
 import me.geraldr12.data.services.TreasuryService;
+import me.geraldr12.data.services.CompanyFundsService;
 import me.geraldr12.economy.VaultTreasuryGateway;
 import me.geraldr12.listeners.ShopLinksListener;
 import me.geraldr12.integration.QuickShopAdapter;
@@ -60,9 +62,11 @@ public class Stonks extends JavaPlugin {
     @Getter private ShopLookup shopLookup;
     @Getter private ShopLinksService shopLinksService;
     @Getter private TreasuryService treasuryService;
+    @Getter private CompanyFundsService companyFundsService;
     @Getter private PriceHistoryLog priceHistoryLog;
     private ShopLinksListener shopLinksListener;
     private ShadowObservation shadowObservation;
+    private TneReceiptSource tneReceiptSource;
 
     @Inject @Getter private PlayerJoinListener playerJoinListener;
     @Inject @Getter private SignsListener signsListener;
@@ -126,6 +130,10 @@ public class Stonks extends JavaPlugin {
         if (autoUpdateService != null) {
             autoUpdateService.shutdown();
         }
+        if (tneReceiptSource != null) {
+            tneReceiptSource.unregister();
+            tneReceiptSource = null;
+        }
         getLogger().info("Plugin successfully disabled!");
     }
 
@@ -137,9 +145,17 @@ public class Stonks extends JavaPlugin {
         treasuryService = new TreasuryService(new VaultTreasuryGateway(this),
                 getDataFolder().toPath().resolve("treasury").resolve("ledger.yml"));
         treasuryService.flush();
+        companyFundsService = new CompanyFundsService(
+                () -> getConfig().getBoolean("Stonks.CompanyFunds.Enabled", true),
+                getDataFolder().toPath().resolve("funds").resolve("ledger.yml"));
         priceHistoryLog = new PriceHistoryLog(getDataFolder().toPath().resolve("history"),
                 () -> getConfig().getBoolean("Stonks.History.Enabled", true));
         shopLinksService = new ShopLinksService(getDataFolder().toPath().resolve("shops").resolve("links.yml"));
+        commerceActivityCollector.observeLinkedShops(shopLinksService);
+        // Part of every linked selling shop's income becomes the company's funds, charged to the shop owner.
+        commerceActivityCollector.onLinkedSale((link, owner, income) -> getServer().getScheduler().runTask(this,
+                () -> new me.geraldr12.data.services.CompanyFundsActions(this)
+                        .shopShare(owner, link.companyId(), income, "SHOP:" + java.util.UUID.randomUUID())));
         shopLinksListener = new ShopLinksListener(shopLinksService);
         townFundamentalsSnapshotService = new TownFundamentalsSnapshotService(
                 towny, commerceActivityCollector, new AdvancedJobsAdapter());
@@ -149,6 +165,10 @@ public class Stonks extends JavaPlugin {
         if (commerceActivityCollector != null) {
             commerceActivityCollector.register(this);
         }
+    }
+
+    public long linkedShopTradeCount(long companyId) {
+        return commerceActivityCollector == null ? -1 : commerceActivityCollector.linkedTradeCount(companyId);
     }
 
     private void rollbackActivation() {
@@ -318,9 +338,18 @@ public class Stonks extends JavaPlugin {
                 shopLinksListener.registerShopDelete(this, quickShop);
             }
         }
-        if (treasuryService != null && getConfig().getBoolean("Stonks.Treasury.BackServerShop", false)
-                && new ServerShopBridge(treasuryService, getLogger()::warning).register(this)) {
-            getLogger().info("Server shop (/shop) now pays and charges through the treasury account.");
+        if (treasuryService != null && getConfig().getBoolean("Stonks.Treasury.BackServerShop", false)) {
+            ServerShopBridge bridge = new ServerShopBridge(treasuryService, getLogger()::warning,
+                    player -> economy.getBalance(player), task -> getServer().getScheduler().runTask(this, task));
+            TneReceiptSource receipts = new TneReceiptSource(getLogger()::warning, getServer()::isPrimaryThread);
+            bridge.useReceipts(receipts.register(this, bridge::onReceipt));
+            if (bridge.register(this)) {
+                tneReceiptSource = receipts;
+                getLogger().info("Server shop (/shop) now pays and charges through the treasury account"
+                        + (receipts.active() ? ", settled by TNE receipts." : "."));
+            } else {
+                receipts.unregister();
+            }
         }
     }
 

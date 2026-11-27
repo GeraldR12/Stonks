@@ -2,6 +2,43 @@
 
 All notable changes to Stonks. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.12.0-rc.3] - 2026-11-19
+
+- Fixed: a backed `/shop` sale of items from more than one shop (for example `/sellgui` with building blocks and farm drops) was left pending and paused the server shop. ExcellentShop pays one transaction per shop of the sold items, and only the first TNE receipt was compared with the whole sale. The player's successful receipts in the trade are now added up and must match it exactly; failed receipts moved nothing and are left out.
+
+## [2.12.0-rc.2] - 2026-11-19
+
+- Fixed: a backed `/shop` trade by a player with gold in the ender chest was left pending. TNE lists every holding at the start of a transaction but only the touched ones at the end, so the untouched ender chest was counted as spent and the receipt never matched. Holdings are now compared one by one.
+
+## [2.12.0-rc.1] - 2026-11-18
+
+- Each company now has funds. The gold paid to create a company and to buy its shares goes into them, and selling shares is paid out of them. A sale the funds cannot cover is refused before any share moves. Stonks no longer creates or destroys gold in share trades.
+- Owners can deposit their own gold (`/invest company deposit`) and pay dividends per share to every shareholder (`/invest company dividend`). `Stonks.Taxes.Dividend` sends part of each dividend to the treasury. There is no personal withdrawal.
+- A linked QuickShop selling shop gives `Stonks.CompanyFunds.ShopRevenueShare` (default 5%) of each sale to the company, charged to the shop owner.
+- When the owner removes a company, they receive its funds instead of a payout at share price. When a company goes bankrupt or staff removes it, its funds go to the treasury account.
+- Staff can list pending payouts, move gold from the treasury into a company, and resolve a pending payout (`/invest admin funds list|grant|resolve`). A payout with an unconfirmed Vault outcome pauses that company until it is resolved.
+- Companies created before this version start with no funds, so their shares can be sold only once the funds hold enough. `Stonks.CompanyFunds.Enabled: false` restores the previous behaviour.
+
+## [2.11.0-rc.3] - 2026-11-18
+
+- With The New Economy installed, a backed ExcellentShop trade is settled by TNE's own receipt for that player: it must succeed and move exactly the trade's gold, or the trade stays pending for review. Without TNE the balance check from rc.2 still applies and the log says so.
+- The server shop refuses trades from offline players while it is backed by the treasury.
+- Company creation and deletion are written to the transaction journal step by step, like share orders.
+
+## [2.11.0-rc.2] - 2026-11-18
+
+- Backed ExcellentShop purchases credit the treasury only after the expected player debit is observed. Checkout previews and cancelled purchases have no treasury effect.
+- A late-cancelled sale with an unchanged player balance returns its reservation. An unresolved balance difference pauses backed trades and remains in the ledger after restart.
+
+## [2.11.0-rc.1] - 2026-11-18
+
+- The market has a bankruptcy archive. Closed positions show their loss and release share capacity while keeping the original records.
+- Buy and sell buttons open a quote with quantity, average price, fee and final gold amount. A changed or expired quote requires a fresh confirmation.
+- The inventory menu now includes a guide, company creation, price history, custom quantities and shop controls. New text can be translated in `messages.yml`.
+- The scheduler skips companies with a transaction awaiting reconciliation. Creation and deletion now keep unconfirmed Vault responses pending.
+- ExcellentShop sales are refused if the server treasury debit cannot be confirmed. Pending treasury operations survive restart and require review before retrying.
+- Linked QuickShop trades can be observed in company details. They do not change prices or payouts.
+
 ## [2.10.5] - 2026-11-14
 
 ### Fixed

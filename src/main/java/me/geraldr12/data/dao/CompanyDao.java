@@ -33,7 +33,11 @@ public class CompanyDao implements Dao<CompanyEntity> {
     private String ownerUuid;
 
     @Setter
-    private boolean bankrupt; // The new field
+    private boolean bankrupt;
+    @Setter
+    private Long bankruptcyTime;
+    @Setter
+    private Double bankruptcyPreviousPrice;
 
     @Override
     public CompanyEntity toEntity() {
@@ -49,7 +53,9 @@ public class CompanyDao implements Dao<CompanyEntity> {
         entity.setAvailableShares(availableShares);
         entity.setHistoric(historic.stream().map(Dao::toEntity).collect(Collectors.toList()));
         entity.setOwnerUuid(ownerUuid);
-        entity.setBankrupt(bankrupt); // Ensure this exists in CompanyEntity!
+        entity.setBankrupt(bankrupt);
+        entity.setBankruptcyTime(bankruptcyTime);
+        entity.setBankruptcyPreviousPrice(bankruptcyPreviousPrice);
         return entity;
     }
 
@@ -74,12 +80,35 @@ public class CompanyDao implements Dao<CompanyEntity> {
                                 .collect(Collectors.toList())
                 ))
                 .ownerUuid(entity.getOwnerUuid())
-                .bankrupt(entity.isBankrupt()) // This maps the new field
+                .bankrupt(entity.isBankrupt())
+                .bankruptcyTime(entity.getBankruptcyTime())
+                .bankruptcyPreviousPrice(entity.getBankruptcyPreviousPrice())
                 .build();
     }
 
-    // This helper checks BOTH the explicit boolean and the price
     public boolean isBankrupt() {
-        return bankrupt || this.getCurrentSharePrice() <= 0.0;
+        return bankrupt || currentSharePrice == 0.0;
+    }
+
+    public boolean isTrading() {
+        return !isBankrupt() && Double.isFinite(currentSharePrice) && currentSharePrice > 0;
+    }
+
+    public Long getBankruptcyTime() {
+        if (bankruptcyTime != null || !isBankrupt() || historic == null) return bankruptcyTime;
+        return historic.stream()
+                .filter(quote -> quote.getPrice() == 0.0 && quote.getTimestamp() > 0)
+                .map(QuoteDao::getTimestamp)
+                .reduce((previous, latest) -> latest).orElse(null);
+    }
+
+    public Double getBankruptcyPreviousPrice() {
+        Long closedAt = getBankruptcyTime();
+        if (bankruptcyPreviousPrice != null || closedAt == null || historic == null) {
+            return bankruptcyPreviousPrice;
+        }
+        return historic.stream()
+                .filter(quote -> quote.getTimestamp() < closedAt && Double.isFinite(quote.getPrice()) && quote.getPrice() > 0)
+                .map(QuoteDao::getPrice).reduce((previous, latest) -> latest).orElse(null);
     }
 }

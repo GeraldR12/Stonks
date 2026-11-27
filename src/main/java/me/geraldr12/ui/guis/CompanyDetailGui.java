@@ -1,12 +1,13 @@
 package me.geraldr12.ui.guis;
 
 import java.text.MessageFormat;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import me.geraldr12.commands.BuyCommand;
-import me.geraldr12.commands.MainCommand.SubCommand;
-import me.geraldr12.commands.SellCommand;
 import me.geraldr12.data.dao.InvestmentDao;
 import me.geraldr12.ui.AbstractPluginGui;
 import me.geraldr12.ui.GuiManager;
@@ -21,20 +22,11 @@ import org.bukkit.entity.Player;
 
 public class CompanyDetailGui extends AbstractPluginGui {
     private final long companyId;
-    private final SubCommand buy;
-    private final SubCommand sell;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm").withZone(ZoneOffset.UTC);
 
     public CompanyDetailGui(Player player, GuiManager guiManager, Messages messages, long companyId) {
-        this(player, guiManager, messages, companyId,
-                new BuyCommand(guiManager.getPlugin()), new SellCommand(guiManager.getPlugin()));
-    }
-
-    public CompanyDetailGui(Player player, GuiManager guiManager, Messages messages, long companyId,
-                            SubCommand buy, SubCommand sell) {
         super(messages.getMessageByKey("uiDetailTitle"), "stonks.ui.companies", player, guiManager, messages);
         this.companyId = companyId;
-        this.buy = buy;
-        this.sell = sell;
     }
 
     private int ownedShares(Player who) {
@@ -50,39 +42,92 @@ public class CompanyDetailGui extends AbstractPluginGui {
         var company = guiManager.getCompaniesService().getCompanyById(companyId);
         if (company != null) {
             int shares = ownedShares(player);
+            List<String> lore = new ArrayList<>();
+            lore.add(MessageFormat.format(messages.getUiCompanyItemStatus(), company.isBankrupt()
+                    ? messages.getCompanyStatusBankrupt() : company.isTrading() ? messages.getCompanyStatusTrading()
+                    : messages.getMessageByKey("uiCompanySuspended")));
+            if (company.isBankrupt()) {
+                Long closedAt = company.getBankruptcyTime();
+                lore.add(closedAt == null ? messages.getMessageByKey("uiBankruptcyUnknown")
+                        : MessageFormat.format(messages.getMessageByKey("uiBankruptAt"), TIME.format(Instant.ofEpochMilli(closedAt))));
+                lore.add(messages.getMessageByKey("uiBankruptcyLegacyReason"));
+                Double previous = company.getBankruptcyPreviousPrice();
+                if (previous != null) lore.add(MessageFormat.format(messages.getMessageByKey("uiBankruptPreviousPrice"),
+                        FormattingUtils.formatDouble(previous)));
+            } else if (company.isTrading()) {
+                lore.add(MessageFormat.format(messages.getUiCompanyItemRisk(), company.getRisk()));
+                lore.add(MessageFormat.format(messages.getUiCompanyItemSharePrice(),
+                        FormattingUtils.formatDouble(company.getCurrentSharePrice())));
+                lore.add(MessageFormat.format(messages.getMessageByKey("uiDetailAvailableShares"), company.getAvailableShares()));
+            }
+            lore.add(MessageFormat.format(messages.getUiInvestmentItemShares(), shares));
+            var plugin = guiManager.getPlugin();
+            if (company.isTrading() && plugin != null && plugin.getCompanyFundsService() != null
+                    && plugin.getCompanyFundsService().enabled()) {
+                lore.add(MessageFormat.format(messages.getMessageByKey("uiCompanyFunds"),
+                        FormattingUtils.formatDouble(plugin.getCompanyFundsService().balance(companyId))));
+            }
+            if (company.isTrading() && plugin != null && plugin.getShopLinksService() != null
+                    && !plugin.getShopLinksService().linksOf(companyId).isEmpty()) {
+                long count = plugin.linkedShopTradeCount(companyId);
+                if (count >= 0) {
+                    lore.add(MessageFormat.format(messages.getMessageByKey("uiShopObserved"), count));
+                    lore.add(messages.getMessageByKey("uiShopObservedHint"));
+                }
+            }
             buttons.put('i', new MenuButton(new MenuIcon(company.getIcon() != null ? company.getIcon() : Material.EMERALD,
                     MessageFormat.format(messages.getMessageByKey("uiDetailCompanyName"), company.getName()),
-                    List.of(MessageFormat.format(messages.getUiCompanyItemStatus(), company.isBankrupt()
-                                    ? messages.getCompanyStatusBankrupt() : messages.getCompanyStatusTrading()),
-                            MessageFormat.format(messages.getUiCompanyItemRisk(), company.getRisk()),
-                            MessageFormat.format(messages.getUiCompanyItemSharePrice(), FormattingUtils.formatDouble(company.getCurrentSharePrice())),
-                            MessageFormat.format(messages.getMessageByKey("uiDetailAvailableShares"), company.getAvailableShares()),
-                            MessageFormat.format(messages.getUiInvestmentItemShares(), shares))), null));
-            buttons.put('a', tradeButton("uiDetailBuyOne", Material.LIME_DYE, buy, 1));
-            buttons.put('b', tradeButton("uiDetailBuyTen", Material.LIME_DYE, buy, 10));
-            buttons.put('c', tradeButton("uiDetailBuyHundred", Material.LIME_DYE, buy, 100));
-            if (shares > 0) {
-                buttons.put('d', tradeButton("uiDetailSellOne", Material.RED_DYE, sell, 1));
+                    lore), null));
+            buttons.put('h', new MenuButton(new MenuIcon(Material.BOOK,
+                    messages.getMessageByKey("uiDetailHistory"), List.of()),
+                    (who, click) -> guiManager.openCompanyHistory(who, companyId)));
+            if (company.isTrading()) {
+                buttons.put('a', tradeButton("uiDetailBuyOne", Material.LIME_DYE, true, 1));
+                buttons.put('b', tradeButton("uiDetailBuyTen", Material.LIME_DYE, true, 10));
+                buttons.put('c', tradeButton("uiDetailBuyHundred", Material.LIME_DYE, true, 100));
+                buttons.put('u', customAmount(true));
+            }
+            if (company.isTrading() && player.getUniqueId().toString().equals(company.getOwnerUuid())) {
+                buttons.put('m', new MenuButton(new MenuIcon(Material.CHEST,
+                        messages.getMessageByKey("uiManageCompany"), List.of()),
+                        (who, click) -> guiManager.openCompanyManagementMenu(who, companyId)));
+            }
+            if (company.isTrading() && shares > 0) {
+                buttons.put('d', tradeButton("uiDetailSellOne", Material.RED_DYE, false, 1));
                 buttons.put('f', new MenuButton(new MenuIcon(Material.RED_DYE,
                         messages.getMessageByKey("uiDetailSellAll"), List.of()), (who, click) -> {
                     int currentShares = ownedShares(who);
-                    if (currentShares > 0) sell.onCommand(who,
-                            new String[]{String.valueOf(companyId), String.valueOf(currentShares)});
+                    if (currentShares > 0) guiManager.openTradeQuote(who, companyId, currentShares, false);
                 }));
+                if (shares >= 10) buttons.put('e', tradeButton("uiDetailSellTen", Material.RED_DYE, false, 10));
+                buttons.put('v', customAmount(false));
             }
-            if (shares >= 10) buttons.put('e', tradeButton("uiDetailSellTen", Material.RED_DYE, sell, 10));
         }
         return new PagedLayout(new String[]{
                 ". . . . . . . . .",
-                ". a b c . . . . .",
-                ". . . . i . . . .",
-                ". d e f . . . . .",
+                ". a b c . u . . .",
+                ". . h . i . m . .",
+                ". d e f . v . . .",
                 ". . . . - . . . ."
         }, buttons, List.of());
     }
 
-    private MenuButton tradeButton(String key, Material material, SubCommand command, int quantity) {
+    private MenuButton tradeButton(String key, Material material, boolean buy, int quantity) {
         return new MenuButton(new MenuIcon(material, messages.getMessageByKey(key), List.of()),
-                (who, click) -> command.onCommand(who, new String[]{String.valueOf(companyId), String.valueOf(quantity)}));
+                (who, click) -> guiManager.openTradeQuote(who, companyId, quantity, buy));
+    }
+
+    private MenuButton customAmount(boolean buy) {
+        return new MenuButton(new MenuIcon(Material.PAPER,
+                messages.getMessageByKey(buy ? "uiTradeCustomBuy" : "uiTradeCustomSell"), List.of()), (who, click) ->
+                guiManager.prompt(this, "uiTradeAmountPrompt", input -> {
+                    try {
+                        int quantity = Integer.parseInt(input);
+                        if (quantity <= 0) throw new NumberFormatException();
+                        guiManager.openTradeQuote(who, companyId, quantity, buy);
+                    } catch (NumberFormatException invalid) {
+                        who.sendMessage(messages.getMessageByKey("uiInputInvalid"));
+                    }
+                }));
     }
 }

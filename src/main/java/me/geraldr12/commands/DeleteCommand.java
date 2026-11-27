@@ -1,9 +1,16 @@
 package me.geraldr12.commands;
 
+import me.geraldr12.data.services.CompanyFundsActions;
+import me.geraldr12.data.services.CompanyFundsService;
+
 import me.geraldr12.Stonks;
+import me.geraldr12.economy.VaultEconomyMutationGateway;
 import me.geraldr12.data.dao.CompanyDao;
 import me.geraldr12.data.services.CompaniesService;
 import me.geraldr12.data.services.PlayersService;
+import me.geraldr12.persistence.MarketTransactionEffect;
+import me.geraldr12.persistence.MarketTransactionEffectState;
+import me.geraldr12.persistence.MarketTransactionEffectType;
 import me.geraldr12.persistence.MarketTransactionJournal;
 import me.geraldr12.persistence.MarketTransactionRecord;
 import me.geraldr12.utils.MarketTransactionLocks;
@@ -83,6 +90,10 @@ public class DeleteCommand implements MainCommand.SubCommand {
                         return true;
                     }
 
+                    if (company.isBankrupt()) {
+                        player.sendMessage(messages.getPluginPrefix() + messages.getMessageByKey("uiCompanyDeleteUnavailable"));
+                        return true;
+                    }
                     double valuation = company.getTotalShares() * company.getCurrentSharePrice();
                     if (!Double.isFinite(valuation) || valuation <= 0) {
                         player.sendMessage(messages.getPluginPrefix()
@@ -110,19 +121,55 @@ public class DeleteCommand implements MainCommand.SubCommand {
                                 + "Unable to calculate a valid company valuation.");
                         return true;
                     }
+                    // With company funds the owner, who holds every share, receives the company's cash.
+                    // No gold is created from the share price.
+                    CompanyFundsService funds = plugin.getCompanyFundsService();
+                    boolean backed = funds != null && funds.enabled();
+                    if (backed) {
+                        double available = CompanyFundsService.floor(funds.balance(companyId), fractionalDigits);
+                        if (!(available > 0)) {
+                            return deleteWithoutPayout(player, messages, company, funds);
+                        }
+                        valuation = available;
+                    }
 
                     MarketTransactionRecord record = transaction(playerId, companyId,
                             company.getTotalShares(), valuation);
-                    if (journal.prepare(record) == null) {
+                    record.setQuoteCompanyId(record.getCompanyId());
+                    record.setQuotePlayerUuid(record.getPlayerUuid());
+                    record.setQuoteQuantity(company.getTotalShares());
+                    record.setQuoteUnitSharePrice(company.getCurrentSharePrice());
+                    record.setQuoteTotalValue(valuation);
+                    record.setQuoteTimestamp(record.getTimestamp());
+                    if (journal.prepareCurrentSchema(record) == null) {
                         player.sendMessage(messages.getPluginPrefix()
                                 + "Unable to prepare the transaction; try again later.");
                         return true;
                     }
 
+                    if (backed && !funds.reserve(companyId, valuation, record.getTransactionId(), "DELETE",
+                            playerId.toString())) {
+                        journal.abort(record, "Company funds could not be reserved");
+                        player.sendMessage(messages.getPluginPrefix()
+                                + "Unable to prepare the transaction; try again later.");
+                        return true;
+                    }
+                    if (!journal.requestEffect(record, MarketTransactionEffectType.ECONOMY_CREDIT,
+                            10, valuation, company.getTotalShares())) {
+                        if (backed) funds.release(record.getTransactionId());
+                        journal.abort(record, "Credit request could not be persisted before mutation");
+                        player.sendMessage(messages.getPluginPrefix()
+                                + "Unable to prepare the transaction; try again later.");
+                        return true;
+                    }
                     EconomyResponse deposit;
+                    double before;
                     try {
+                        before = economy.getBalance(player);
                         deposit = economy.depositPlayer(player, valuation);
                     } catch (RuntimeException e) {
+                        recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_CREDIT,
+                                MarketTransactionEffectState.AMBIGUOUS, "Vault deposit threw " + e.getClass().getSimpleName());
                         journal.markReconciliationRequired(record, "Vault deposit outcome is ambiguous: " + e.getClass().getSimpleName());
                         plugin.getLogger().log(java.util.logging.Level.SEVERE,
                                 "CRITICAL Stonks delete Vault outcome is ambiguous", e);
@@ -131,43 +178,52 @@ public class DeleteCommand implements MainCommand.SubCommand {
                     if (deposit == null || !deposit.transactionSuccess()
                             || !Double.isFinite(deposit.amount)
                             || Double.compare(deposit.amount, valuation) != 0) {
-                        if (deposit != null && deposit.transactionSuccess()) {
+                        if (!VaultEconomyMutationGateway.rejectedWithoutChangingBalance(economy, player, before, deposit)) {
+                            recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_CREDIT,
+                                    MarketTransactionEffectState.AMBIGUOUS, "Vault deposit could not be confirmed");
                             journal.markReconciliationRequired(record,
-                                    "Vault deposit amount mismatch: expected " + valuation
-                                            + ", received " + deposit.amount);
+                                    "Vault deposit outcome could not be confirmed");
                             return critical(player, messages);
                         }
-                        if (!journal.abort(record, "Vault rejected deposit")) {
+                        if (!recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_CREDIT,
+                                MarketTransactionEffectState.DEFINITE_REJECTED, "Vault rejected deposit")
+                                || !journal.abort(record, "Vault rejected deposit")) {
                             plugin.getLogger().severe("Unable to persist aborted delete transaction");
+                            journal.markReconciliationRequired(record, "Credit rejection persistence failed");
+                            return critical(player, messages);
                         }
+                        if (backed) funds.release(record.getTransactionId());
                         player.sendMessage(messages.getPluginPrefix() + "Unable to complete the payment.");
                         return true;
                     }
-                    if (!journal.markEconomyApplied(record)) {
+                    if (backed && !funds.settle(record.getTransactionId())) {
+                        plugin.getLogger().severe("Company funds payout " + record.getTransactionId()
+                                + " was paid but could not be settled; review the funds ledger.");
+                    }
+                    if (!recordOutcome(journal, record, MarketTransactionEffectType.ECONOMY_CREDIT,
+                            MarketTransactionEffectState.CONFIRMED, "confirmed")) {
                         journal.markReconciliationRequired(record,
                                 "Economy applied but journal update failed");
                         return critical(player, messages);
                     }
 
-                    if (!players.removeSharesFromPlayer(playerId, companyId, company.getTotalShares())) {
+                    if (!persistEffect(journal, record, MarketTransactionEffectType.PLAYER_SHARE_REMOVAL, 20,
+                            () -> players.removeSharesFromPlayer(playerId, companyId, company.getTotalShares()))) {
                         reconcile(journal, record, "Player persistence failed after economy mutation");
                         return critical(player, messages);
                     }
-                    if (!companies.deleteCompany(companyId)) {
+                    if (!persistEffect(journal, record, MarketTransactionEffectType.COMPANY_RECORD_DELETE, 30,
+                            () -> companies.deleteCompany(companyId))) {
                         reconcile(journal, record, "Company persistence failed after economy mutation");
                         return critical(player, messages);
                     }
 
-                    if (journal != null) {
-                        if (!journal.markStateCommitted(record)
-                                || !journal.markMarketImpactStarted(record)
-                                || !journal.markMarketImpactApplied(record)
-                                || !journal.complete(record)) {
-                            journal.markReconciliationRequired(record,
-                                    "Completion marker failed after deletion commit");
-                            return critical(player, messages);
-                        }
+                    if (!journal.complete(record)) {
+                        journal.markReconciliationRequired(record,
+                                "Completion marker failed after deletion commit");
+                        return critical(player, messages);
                     }
+                    if (backed) CompanyFundsActions.closeToTreasury(plugin, funds, companyId, "DELETE");
                     player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
                             messages.getSoldActions(), company.getTotalShares(), valuation));
                     player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
@@ -177,6 +233,49 @@ public class DeleteCommand implements MainCommand.SubCommand {
                 }
             }
         }
+    }
+
+    /**
+     * Removes a company that has no cash, without paying anything: there is no gold to return and none is
+     * created. Runs under the same locks as a paid deletion.
+     */
+    private boolean deleteWithoutPayout(Player player, Messages messages, CompanyDao company,
+                                        CompanyFundsService funds) {
+        long companyId = company.getId();
+        if (!plugin.getPlayersService().removeSharesFromPlayer(player.getUniqueId(), companyId,
+                company.getTotalShares())) {
+            player.sendMessage(messages.getPluginPrefix() + "Unable to delete company.");
+            return true;
+        }
+        if (!plugin.getCompaniesService().deleteCompany(companyId)) {
+            plugin.getLogger().severe("Company " + companyId + " lost its owner's shares but could not be deleted.");
+            return critical(player, messages);
+        }
+        CompanyFundsActions.closeToTreasury(plugin, funds, companyId, "DELETE");
+        player.sendMessage(messages.getPluginPrefix() + MessageFormat.format(
+                messages.getDeletedCompany(), company.getName()));
+        return true;
+    }
+
+    private boolean persistEffect(MarketTransactionJournal journal, MarketTransactionRecord record,
+                                  MarketTransactionEffectType type, int sequence,
+                                  java.util.function.BooleanSupplier mutation) {
+        if (!journal.requestEffect(record, type, sequence, 0.0, record.getQuantity())) return false;
+        boolean saved;
+        try {
+            saved = mutation.getAsBoolean();
+        } catch (RuntimeException e) {
+            saved = false;
+        }
+        return recordOutcome(journal, record, type, saved ? MarketTransactionEffectState.CONFIRMED
+                : MarketTransactionEffectState.AMBIGUOUS, saved ? "confirmed" : "Persistence outcome is ambiguous") && saved;
+    }
+
+    private boolean recordOutcome(MarketTransactionJournal journal, MarketTransactionRecord record,
+                                  MarketTransactionEffectType type, MarketTransactionEffectState state, String reason) {
+        String effectId = record.getEffects().stream().filter(effect -> effect.getType() == type)
+                .map(MarketTransactionEffect::getEffectId).findFirst().orElse(null);
+        return journal.recordEffectOutcome(record, effectId, state, reason);
     }
 
     private boolean critical(Player player, Messages messages) {

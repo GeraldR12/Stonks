@@ -404,6 +404,7 @@ public class CompaniesService implements Service {
 
             double oldShareValue = companyDao.getCurrentSharePrice();
             companyDao.setCurrentSharePrice(newSharesValue);
+            companyDao.getHistoric().push(new QuoteDao(variation, newSharesValue, System.currentTimeMillis()));
             boolean saved = companiesRepository.save(companyDao.toEntity());
 
             if (saved) {
@@ -452,6 +453,10 @@ public class CompaniesService implements Service {
                 return false;
             }
 
+            if (companyDao.isBankrupt()) return true;
+            if (!companyDao.isTrading()) return false;
+            companyDao.setBankruptcyTime(System.currentTimeMillis());
+            companyDao.setBankruptcyPreviousPrice(companyDao.getCurrentSharePrice());
             companyDao.setBankrupt(true);
             companyDao.setCurrentSharePrice(0.0);
             return companiesRepository.save(companyDao.toEntity());

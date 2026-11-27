@@ -1,5 +1,6 @@
 package me.geraldr12.data.entities;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import org.bukkit.Material;
 
@@ -20,6 +21,10 @@ public class CompanyEntity implements DataEntity {
     private List<QuoteEntity> historic;
     private String ownerUuid; // The UUID of the player who owns this company
     private boolean bankrupt;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Long bankruptcyTime;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Double bankruptcyPreviousPrice;
 
     public boolean isBankrupt() {
         return bankrupt;

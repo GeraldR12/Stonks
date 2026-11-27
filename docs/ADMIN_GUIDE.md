@@ -65,7 +65,7 @@ All keys live under `Stonks:` in `plugins/Stonks/config.yml`. Run `/invest reloa
 | `Updates.Reminder` | `true` | Tells ops about new versions when they join. |
 | `StockCrash.Enabled` | `true` | Allows crashes. |
 | `StockCrash.Aggressiveness` | `0.7` | 0 to 1. Higher means more frequent crashes, and risk multiplies it. |
-| `StockCrash.RemoveBankrupt` | `false` | Currently ignored: bankrupt companies are kept and marked bankrupt, because removing them would need a payout to every shareholder. |
+| `StockCrash.RemoveBankrupt` | `false` | Legacy key. Bankrupt companies leave the active list and remain in the bankruptcy archive. |
 | `MarketImpactPerShare` | `0.00003` | How much each traded share moves the price. 1000 shares is about 3%. 0 to 0.01. |
 | `Taxes.Trading` | `0.01` | Fee per trade as a fraction of its value (1%). Below 0.5. |
 | `Taxes.TradingMinimum` | `1.0` | Smallest fee per trade. Stops tiny orders from dodging the fee. |
@@ -77,6 +77,10 @@ All keys live under `Stonks:` in `plugins/Stonks/config.yml`. Run `/invest reloa
 | `Limits.MaxSharePrice` | `50` | Highest starting share price. `-1` turns it off. |
 | `Limits.MinBalance` | `0.1` | Not enforced yet. |
 | `Limits.MaxSharesPerPlayer` | `1000` | Most shares one player can hold across companies they don't own. Shares of their own companies don't count. `-1` turns it off. |
+
+Before rolling back from 2.11 to 2.10.5, preserve a matching backup of the Stonks data directory and JAR. The old company reader can reject bankruptcy metadata introduced in 2.11. Reconcile any financial effects applied after the backup before restoring it.
+
+Rolling back from 2.11.0-rc.3 to rc.2 needs one more step. rc.2 cannot read the journal records that rc.3 writes for company creation and deletion. When it finds them it blocks its own startup ("Transaction journal integrity validation failed"), and `/shop` then runs without the treasury bridge. With the server stopped, move every file in `plugins/Stonks/transactions/archive/` that contains `COMPANY_RECORD_CREATE` or `COMPANY_RECORD_DELETE` out of the server. Only records with `status: "COMPLETED"` may be moved. A matching record outside `archive/` means an operation is still open, so reconcile it first. Put the files back before starting rc.3 again. rc.2 also rewrites `treasury/ledger.yml` without the `shopReceipts` list. That is harmless.
 
 ### How prices behave
 Each update moves every company's price by a random step. A company with risk `r` and starting price `p` stays roughly between `p × 0.6 / r` and `p × 3 × r`. Near the bottom it can crash, and a company at zero is bankrupt and can't be traded.
@@ -102,12 +106,14 @@ If CMI (or another plugin) also registers `/money`, it takes over the plain comm
 2. Start the server once so TNE creates the account. Check it with `theneweconomy:money other Server_Account`, which prints `Total: N G`.
 3. **Stonks**: set `Treasury.Account: "Server_Account"` and run `/invest reload` in game (or restart). From then on fees and creation tax go to the account.
 4. **Towny** (optional): in `plugins/Towny/settings/config.yml`, under `economy.closed_economy`, set `enabled: 'true'`, `server_account: Server_Account`, and `server_account_uuid` to the UUID of TNE's account. Find it in `plugins/TheNewEconomy/accounts/`: open the file containing `Name: Server_Account` and copy its `ID:`. Some setups find the account by name even with Towny's default UUID, but on others the money goes nowhere and TNE logs "Unable to locate account", so set the real UUID. Once it works, town and nation costs, upkeep and taxes land in the server account. Watch the balance across one Towny new day to confirm.
-5. **ExcellentShop** (optional): set `Treasury.BackServerShop: true` and restart. On start the console prints `Server shop (/shop) now pays and charges through the treasury account.` If it prints `Server shop is not linked to the treasury (ExcellentShop API not recognised)` instead, your ExcellentShop version isn't supported and `/shop` keeps creating gold as before. Tested with ExcellentShop 5.1.7 and nightcore 2.16.7. Use Stonks 2.10.2 or later for this: in 2.10.0 and 2.10.1 the price preview in the buy menu also counted as a purchase, so every `/shop` purchase went into the account twice.
+5. **ExcellentShop** (optional): set `Treasury.BackServerShop: true` and restart. On start the console prints `Server shop (/shop) now pays and charges through the treasury account, settled by TNE receipts.` Without TheNewEconomy the line ends at "treasury account." and a warning says the bridge falls back to balance observation. If it prints `Server shop is not linked to the treasury (ExcellentShop API not recognised)` instead, your ExcellentShop version isn't supported and `/shop` keeps creating gold as before. Tested with ExcellentShop 5.1.7 and nightcore 2.16.7. Use Stonks 2.10.2 or later for this: in 2.10.0 and 2.10.1 the price preview in the buy menu also counted as a purchase, so every `/shop` purchase went into the account twice.
 
-   With the bridge on, every sale to the virtual shop (`/shop`, its sell menu `/sellgui`, and `/sellall`) is paid from the server account, and every purchase from `/shop` goes into it. If the account can't cover a sale, the sale is refused, the player keeps the items and sees "The server shop is out of gold right now. Try again later." Player chest shops and the auction house are not affected.
+   With the bridge on, a sale reserves gold from the server account before ExcellentShop moves items. If the account can't cover it, the sale is refused, the player keeps the items and sees "The server shop is out of gold right now. Try again later." A purchase credits the account only after the player's debit is confirmed. Trades by offline players are refused while the bridge is on. Player chest shops and the auction house are unaffected.
 6. Check `theneweconomy:money other Server_Account`, `plugins/Stonks/treasury/ledger.yml`, and a `/shop` sale and purchase of one item. The account should move by the same amount the player received or paid.
 
 `/shop` prices are dynamic and fractional, but TNE with item gold only pays whole coins, so the bridge moves the same rounded-down amount the player actually received.
+
+The bridge settles one backed trade at a time. ExcellentShop 5.1.7 fires its completion event before it moves the money and items, and it fires no event afterwards. With TheNewEconomy (tested with TNE-Paper 0.1.5.3), Stonks listens to TNE's own transaction receipts. Once the trade can no longer be cancelled, the first TNE receipt for that player decides it. The receipt must report success and move exactly the trade's gold. Anything else leaves the trade pending: a failed transaction, a different amount (a TNE tax, for example), a second currency, no receipt by the next tick, or a receipt id already used. The ids of the last 200 receipts are kept in the ledger under `shopReceipts`. Without TNE the bridge compares the player's balance on the next tick instead, and concurrent balance changes can make the outcome ambiguous. Items are not part of the check in either mode. If `pendingShop`, `pendingCredit` or `pendingPayout` remains in `treasury/ledger.yml`, preserve the ledger and check both balances, inventory and the economy logs before resuming. Restarting does not clear a pending operation or replay it. The treasury's `paid` and `credited` fields count gross movements, including a reservation and its return when applicable.
 
 The auction house listing tax (`/ah`, 10% by default) does not go to the account yet; it still leaves the economy.
 
@@ -116,10 +122,30 @@ The auction house listing tax (`/ah`, 10% by default) does not go to the account
 - Money comes in from Stonks fees and creation tax, `/shop` purchases and Towny (on our server one Towny new day added about 19,500).
 - Money goes out through `/shop` sales. If the balance falls day after day, the ExcellentShop selling prices are too generous for what comes in: lower them or top the account up.
 - The ledger's `credited` minus `paid` should match what the account gained from Stonks and `/shop`. Towny deposits go straight to the account and don't appear in the ledger.
+- The ledger records `pendingCredit` and `pendingPayout` before calling Vault. A nonzero pending amount on startup requires staff to compare the ledger with the provider's records. Automatic treasury mutations stay paused until the discrepancy is resolved. Keep the original ledger and transaction evidence.
 - If `unbacked` goes above 0, or `owed` keeps growing, check that the account exists and that `Treasury.Account` matches its name exactly.
 - With an empty account, `/shop` refuses sales until the account is topped up.
 - Don't rename or delete `Server_Account`. Stonks and Towny find it by name. Stonks would keep its deposits as `owed` and retry, but Towny's would be lost.
 - To turn the bridge off, set `Treasury.BackServerShop: false` and restart; `/shop` then pays out of nowhere again. To stop sending fees to the account, set `Treasury.Account: ""` and run `/invest reload`.
+
+## Company funds
+
+Each company keeps its own gold in `plugins/Stonks/funds/ledger.yml`. Stonks never creates gold for a share trade:
+
+- **Gold in:** creation (price × shares; the creation tax still goes to the treasury), share purchases (the gross value; the fee goes to the treasury), owner deposits, and `ShopRevenueShare` of every sale a linked QuickShop selling shop makes (charged to the shop owner).
+- **Gold out:** share sales (the gross value; refused when the funds cannot cover it), dividends, and the owner's payout on removal.
+- **To the treasury:** bankruptcy and staff removal send all the funds to `Treasury.Account`. Without a treasury account that gold leaves the economy, as fees did before.
+
+Companies created before 2.12 start with no funds, so their shareholders can sell only once the funds hold enough. To back them, move gold from the treasury with `/invest admin funds grant <ID> <amount>`. That gold already exists, so nothing is created.
+
+| Command | What it does |
+|---|---|
+| `/invest admin funds list` | total held, gold in and out, and every pending payout |
+| `/invest admin funds grant <ID> <amount>` | moves gold from the treasury account into a company |
+| `/invest admin funds resolve <operation> paid` | the gold reached the player or the treasury; close the operation |
+| `/invest admin funds resolve <operation> returned` | the gold did not leave; give it back to the company |
+
+A pending payout pauses trading, deposits and dividends for that company. Before resolving it, check the player's balance, the treasury balance and the log line with the same operation id. Nothing is retried automatically.
 
 ## When a trade gets stuck
 

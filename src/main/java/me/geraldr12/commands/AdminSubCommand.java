@@ -10,10 +10,12 @@ public class AdminSubCommand implements MainCommand.SubCommand {
 
     private final AdminCreateCommand create;
     private final AdminDeleteCommand delete;
+    private final AdminFundsCommand funds;
 
     public AdminSubCommand(Stonks plugin) {
         this.create = new AdminCreateCommand(plugin);
         this.delete = new AdminDeleteCommand(plugin);
+        this.funds = new AdminFundsCommand(plugin);
     }
 
     @Override
@@ -25,13 +27,16 @@ public class AdminSubCommand implements MainCommand.SubCommand {
             return create.onCommand(player, Arrays.copyOfRange(args, 1, args.length));
         } else if (action.equals("delete")) {
             return delete.onCommand(player, Arrays.copyOfRange(args, 1, args.length));
+        } else if (action.equals("funds")) {
+            return funds.onCommand(player, Arrays.copyOfRange(args, 1, args.length));
         }
         return true;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
-        if (args.length == 1) return List.of("create", "delete");
+        if (args.length == 1) return List.of("create", "delete", "funds");
+        if (args.length == 2 && args[0].equalsIgnoreCase("funds")) return List.of("list", "grant", "resolve");
         return List.of();
     }
 }

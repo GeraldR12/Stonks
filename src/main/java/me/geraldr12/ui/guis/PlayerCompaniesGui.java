@@ -8,6 +8,7 @@ import me.geraldr12.ui.GuiManager;
 import me.geraldr12.ui.items.CompanyItem;
 import me.geraldr12.ui.items.CreateCompanyButtonItem;
 import me.geraldr12.ui.menu.MenuButton;
+import me.geraldr12.ui.menu.MenuIcon;
 import me.geraldr12.ui.menu.PagedLayout;
 import me.geraldr12.utils.Messages;
 import org.bukkit.Material;
@@ -17,7 +18,7 @@ public class PlayerCompaniesGui extends AbstractPluginGui {
     private final CompaniesService companiesService;
 
     public PlayerCompaniesGui(Player player, GuiManager guiManager, CompaniesService companiesService, Messages messages) {
-        super("§8My Companies", "stonks.command.company", player, guiManager, messages);
+        super(messages.getMessageByKey("uiMyCompaniesTitle"), "stonks.command.company", player, guiManager, messages);
         this.companiesService = companiesService;
     }
 
@@ -28,10 +29,12 @@ public class PlayerCompaniesGui extends AbstractPluginGui {
                 .<MenuButton>map(company -> new CompanyItem(guiManager.getPlugin(), messages, companiesService, company.getId())).toList();
         Map<Character, MenuButton> buttons = controls(Material.BLACK_STAINED_GLASS_PANE, " ");
         buttons.put('C', new CreateCompanyButtonItem(guiManager, messages));
+        if (items.isEmpty()) items = List.of(new MenuButton(new MenuIcon(Material.PAPER,
+                messages.getMessageByKey("uiMyCompaniesEmpty"), List.of()), null));
         return new PagedLayout(new String[]{
                 "# # # # # # # # #",
                 "# x x x x x x x #",
-                "# # # # C # # # -"
+                "# # # < C > # # -"
         }, buttons, items);
     }
 }

@@ -126,7 +126,7 @@ class FinancialCommandFixture {
         doAnswer(invocation -> {
             prepared = invocation.getArgument(0);
             return invocation.callRealMethod();
-        }).when(journal).prepare(any());
+        }).when(journal).prepareCurrentSchema(any());
         MarketTransactionLocks.initialize(journal);
         assertTrue(MarketTransactionLocks.activate(plugin, journal));
     }
@@ -158,7 +158,7 @@ class FinancialCommandFixture {
             return;
         }
         switch (boundary) {
-            case "prepare" -> doReturn(null).when(journal).prepare(any());
+            case "prepare" -> doReturn(null).when(journal).prepareCurrentSchema(any());
             case "balanceException" -> when(economy.has(player, value)).thenThrow(new IllegalStateException("balance"));
             case "vaultException" -> {
                 if (create) when(economy.withdrawPlayer(player, value)).thenThrow(new IllegalStateException("withdraw"));
@@ -168,7 +168,7 @@ class FinancialCommandFixture {
             case "nullResponse" -> vaultResponse(null);
             case "mismatch" -> vaultResponse(new EconomyResponse(value - 1, 100, EconomyResponse.ResponseType.SUCCESS, null));
             case "nanAmount" -> vaultResponse(new EconomyResponse(Double.NaN, 100, EconomyResponse.ResponseType.SUCCESS, null));
-            case "economy", "economyAndReconciliationFalse" -> doReturn(false).when(journal).markEconomyApplied(any());
+            case "economy", "economyAndReconciliationFalse" -> failOutcome(0);
             case "save" -> when(companies.saveReservedCompany(company)).thenReturn(false);
             case "companyShares" -> when(companies.removeSharesFromCompany(1, 10)).thenReturn(false);
             case "playerShares" -> {
@@ -176,9 +176,8 @@ class FinancialCommandFixture {
                 else when(players.removeSharesFromPlayer(playerId, 1, 10)).thenReturn(false);
             }
             case "delete" -> when(companies.deleteCompany(1)).thenReturn(false);
-            case "state" -> doReturn(false).when(journal).markStateCommitted(any());
-            case "impactStarted" -> doReturn(false).when(journal).markMarketImpactStarted(any());
-            case "impactApplied" -> doReturn(false).when(journal).markMarketImpactApplied(any());
+            case "state" -> failOutcome(create ? 3 : 2);
+            case "impactStarted", "impactApplied" -> doReturn(false).when(journal).complete(any());
             case "complete" -> doReturn(false).when(journal).complete(any());
             case "reconciliationFalse" -> inject(create ? "save" : "playerShares");
             case "success" -> { }
@@ -187,6 +186,15 @@ class FinancialCommandFixture {
         if (boundary.equals("reconciliationFalse") || boundary.equals("economyAndReconciliationFalse")) {
             doReturn(false).when(journal).markReconciliationRequired(any(), anyString());
         }
+    }
+
+    void failOutcome(int index) {
+        doAnswer(invocation -> {
+            MarketTransactionRecord record = invocation.getArgument(0);
+            String id = invocation.getArgument(1);
+            return record.getEffects().size() > index && record.getEffects().get(index).getEffectId().equals(id)
+                    ? false : invocation.callRealMethod();
+        }).when(journal).recordEffectOutcome(any(), anyString(), any(), any());
     }
 
     MarketTransactionRecord record() {
@@ -244,13 +252,9 @@ class FinancialCommandFixture {
                 return;
             }
             MarketTransactionStatus status = switch (boundary) {
-                case "balanceException", "rejected", "nullResponse" -> MarketTransactionStatus.ABORTED;
-                case "reconciliationFalse" -> MarketTransactionStatus.ECONOMY_APPLIED;
-                case "economyAndReconciliationFalse" -> MarketTransactionStatus.PREPARED;
-                case "stateReconciliationFalse" -> MarketTransactionStatus.ECONOMY_APPLIED;
-                case "impactStartedReconciliationFalse" -> MarketTransactionStatus.STATE_COMMITTED;
-                case "impactAppliedReconciliationFalse" -> MarketTransactionStatus.MARKET_IMPACT_STARTED;
-                case "completeReconciliationFalse" -> MarketTransactionStatus.MARKET_IMPACT_APPLIED;
+                case "balanceException", "rejected" -> MarketTransactionStatus.ABORTED;
+                case "reconciliationFalse", "economyAndReconciliationFalse", "stateReconciliationFalse" -> MarketTransactionStatus.IN_PROGRESS;
+                case "impactStartedReconciliationFalse", "impactAppliedReconciliationFalse", "completeReconciliationFalse" -> MarketTransactionStatus.COMMITTED;
                 case "success" -> MarketTransactionStatus.COMPLETED;
                 default -> MarketTransactionStatus.RECONCILIATION_REQUIRED;
             };

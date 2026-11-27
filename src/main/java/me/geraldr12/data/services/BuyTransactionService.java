@@ -13,8 +13,6 @@ import me.geraldr12.persistence.MarketTransactionRecord;
 import me.geraldr12.utils.MarketTransactionLocks;
 import org.bukkit.OfflinePlayer;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -70,6 +68,11 @@ public final class BuyTransactionService {
 
     public BuyTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
                                         long companyId, int quantity) {
+        return execute(playerId, economyActor, companyId, quantity, null);
+    }
+
+    public BuyTransactionResult execute(UUID playerId, OfflinePlayer economyActor,
+                                        long companyId, int quantity, MarketPricing.Quote expected) {
         if (playerId == null || economyActor == null || companyId < 0 || quantity <= 0) {
             return result(BuyTransactionResult.Status.VALIDATION_REJECTED,
                     companyId, quantity, null);
@@ -109,17 +112,15 @@ public final class BuyTransactionService {
                         return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
                     CompaniesService companies = plugin.getCompaniesService();
-                    double gross = MarketPricing.buyGross(unitPrice, quantity, companies.getMarketImpactPerShare());
-                    double unroundedTotal = gross + MarketPricing.fee(gross,
-                            companies.getTradingTax(), companies.getTradingMinimum());
-                    if (!Double.isFinite(unroundedTotal) || unroundedTotal <= 0) {
+                    MarketPricing.Quote quote = MarketPricing.quote(unitPrice, quantity, true, fractionalDigits, companies);
+                    if (quote == null || quote.total() <= 0) {
                         return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
                     }
-                    double total = fractionalDigits == -1 ? unroundedTotal
-                            : BigDecimal.valueOf(unroundedTotal).setScale(fractionalDigits, RoundingMode.DOWN).doubleValue();
-                    if (!Double.isFinite(total) || total <= 0) {
-                        return result(BuyTransactionResult.Status.VALIDATION_REJECTED, companyId, quantity, null);
+                    if (expected != null && !expected.equals(quote)) {
+                        return result(BuyTransactionResult.Status.QUOTE_CHANGED, companyId, quantity, null);
                     }
+                    double gross = quote.gross();
+                    double total = quote.total();
                     if (!economy.has(economyActor, total)) {
                         return BuyTransactionResult.of(BuyTransactionResult.Status.INSUFFICIENT_FUNDS,
                                 companyId, quantity, null, total);
@@ -196,6 +197,7 @@ public final class BuyTransactionService {
                     }
                     if (!request(journal, record, MarketTransactionEffectType.MARKET_IMPACT, 70, 0.0, quantity)) {
                         reconcile(journal, record, "Market impact request could not be persisted");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     boolean impact;
@@ -208,10 +210,12 @@ public final class BuyTransactionService {
                             impact ? MarketTransactionEffectState.CONFIRMED : MarketTransactionEffectState.AMBIGUOUS,
                             impact ? "confirmed" : "market impact outcome is ambiguous")) {
                         reconcile(journal, record, "Market impact outcome persistence failed");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     if (!impact) {
                         reconcile(journal, record, "Market impact outcome is ambiguous");
+                        creditFunds(companyId, gross, record);
                         return result(BuyTransactionResult.Status.COMMITTED_MARKET_RECONCILIATION, companyId, quantity, record);
                     }
                     if (!journal.complete(record)) {
@@ -219,10 +223,21 @@ public final class BuyTransactionService {
                     }
                     // The fee part of what the player paid goes to the server treasury (if configured).
                     TreasuryService.credit(plugin.getTreasuryService(), total - gross);
+                    creditFunds(companyId, gross, record);
                     return result(BuyTransactionResult.Status.SUCCESS, companyId, quantity, record);
                     }
                 }
             }
+        }
+    }
+
+    /** The gross value the player paid becomes the company's funds, so a later sale can be paid from it. */
+    private void creditFunds(long companyId, double gross, MarketTransactionRecord record) {
+        CompanyFundsService funds = plugin.getCompanyFundsService();
+        if (funds == null || !funds.enabled()) return;
+        if (!funds.credit(companyId, gross, record.getTransactionId())) {
+            plugin.getLogger().severe("Company funds credit for transaction " + record.getTransactionId()
+                    + " failed; " + gross + " gold did not reach company " + companyId + ".");
         }
     }
 

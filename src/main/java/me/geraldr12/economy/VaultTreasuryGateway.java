@@ -32,8 +32,8 @@ public class VaultTreasuryGateway implements TreasuryService.Gateway {
                     + " fees are kept as owed until it does.");
             return false;
         }
-        EconomyResponse response = economy.depositPlayer(account, amount);
-        return response != null && response.transactionSuccess();
+        double before = economy.getBalance(account);
+        return confirm(economy, account, before, amount, economy.depositPlayer(account, amount));
     }
 
     @Override
@@ -49,8 +49,20 @@ public class VaultTreasuryGateway implements TreasuryService.Gateway {
     public boolean withdraw(String account, double amount) {
         Economy economy = plugin.getEconomy();
         if (economy == null || account == null || account.isBlank() || !economy.hasAccount(account)) return false;
-        EconomyResponse response = economy.withdrawPlayer(account, amount);
-        return response != null && response.transactionSuccess();
+        double before = economy.getBalance(account);
+        return confirm(economy, account, before, amount, economy.withdrawPlayer(account, amount));
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean confirm(Economy economy, String account, double before, double amount, EconomyResponse response) {
+        if (response != null && response.transactionSuccess() && Double.compare(response.amount, amount) == 0) {
+            return true;
+        }
+        if (response != null && response.type == EconomyResponse.ResponseType.FAILURE
+                && Double.isFinite(before) && Double.compare(economy.getBalance(account), before) == 0) {
+            return false;
+        }
+        throw new IllegalStateException("Treasury Vault outcome could not be confirmed");
     }
 
     @Override

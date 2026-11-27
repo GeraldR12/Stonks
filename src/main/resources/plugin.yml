@@ -1,6 +1,6 @@
 name: Stonks
 main: me.geraldr12.Stonks
-version: 2.10.5
+version: 2.12.0-rc.3
 api-version: 1.16
 depend:
   - Vault
@@ -9,6 +9,7 @@ softdepend:
   - QuickShop-Hikari
   - AdvancedJobs
   - ExcellentShop
+  - TheNewEconomy
 commands:
   invest:
     description: Main investment command.

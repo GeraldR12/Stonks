@@ -320,8 +320,13 @@ public class PlayersService implements Service {
      * are left out: an owner starts with every share of their company and must still be able to invest elsewhere.
      */
     public long getSharesCountedTowardsLimit(UUID playerId) {
+        CompaniesService companies = plugin == null ? null : plugin.getCompaniesService();
         return getOrCreatePlayer(playerId).getInvestments().stream()
-                .filter(investment -> !ownsCompany(playerId, investment.getCompanyId()))
+                .filter(investment -> {
+                    CompanyDao company = companies == null ? null : companies.getCompanyById(investment.getCompanyId());
+                    return company == null || (!company.isBankrupt()
+                            && !playerId.toString().equalsIgnoreCase(company.getOwnerUuid()));
+                })
                 .mapToLong(InvestmentDao::getSharesAmount)
                 .sum();
     }

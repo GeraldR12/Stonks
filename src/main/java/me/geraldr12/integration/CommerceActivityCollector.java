@@ -1,5 +1,6 @@
 package me.geraldr12.integration;
 
+import me.geraldr12.data.services.ShopLinksService;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.event.Event;
@@ -24,12 +25,43 @@ public final class CommerceActivityCollector implements Listener {
     private final QuickShopAdapter quickShop;
     private final TownyAdapter towny;
     private final Map<UUID, Deque<CommerceObservation>> byTown = new HashMap<>();
+    private final Deque<LinkedTrade> linkedTrades = new ArrayDeque<>();
+    private ShopLinksService shopLinks;
     private final java.util.function.BooleanSupplier primaryThread;
     private final java.util.function.Function<Location, Object> townResolver;
     private final Registration registration;
     private final boolean optionalIntegration;
     private boolean registered;
 
+    private record LinkedTrade(ShopLinksService.ShopLink link, Instant time) {}
+
+    /** Receives each sale a linked selling shop made, with what its owner earned (after QuickShop's tax). */
+    @FunctionalInterface
+    public interface LinkedSaleSink {
+        void onLinkedSale(ShopLinksService.ShopLink link, UUID shopOwner, double ownerIncome);
+    }
+
+    private LinkedSaleSink linkedSaleSink;
+
+    public void onLinkedSale(LinkedSaleSink sink) {
+        linkedSaleSink = sink;
+    }
+
+    public void observeLinkedShops(ShopLinksService links) {
+        shopLinks = links;
+    }
+
+    public long linkedTradeCount(long companyId) {
+        if (shopLinks == null || !isRegistered()) return -1;
+        Instant cutoff = Instant.now().minus(MAX_RETENTION);
+        pruneLinkedTrades(cutoff);
+        return linkedTrades.stream().filter(trade -> trade.link().companyId() == companyId)
+                .filter(trade -> shopLinks.linkOf(trade.link().shopId()).filter(trade.link()::equals).isPresent()).count();
+    }
+
+    private void pruneLinkedTrades(Instant cutoff) {
+        while (!linkedTrades.isEmpty() && linkedTrades.peekFirst().time().isBefore(cutoff)) linkedTrades.removeFirst();
+    }
     @FunctionalInterface
     interface Registration {
         void register(Plugin plugin, CommerceActivityCollector collector)
@@ -137,12 +169,40 @@ public final class CommerceActivityCollector implements Listener {
 
     void observeEvent(Object event) throws ReflectiveOperationException {
             Object shop = event.getClass().getMethod("getShop").invoke(event);
+        Number amount = (Number) event.getClass().getMethod("getAmount").invoke(event);
+        Instant now = Instant.now();
+        if (shopLinks != null && amount != null && amount.longValue() > 0) observeLinkedTrade(event, shop, now);
             Location location = (Location) shop.getClass().getMethod("getLocation").invoke(shop);
             Object town = townResolver.apply(location);
             if (town == null) return;
             UUID townId = (UUID) town.getClass().getMethod("getUUID").invoke(town);
-            Number amount = (Number) event.getClass().getMethod("getAmount").invoke(event);
-            observeResolved(townId, amount, Instant.now());
+        observeResolved(townId, amount, now);
+    }
+
+    private void observeLinkedTrade(Object event, Object shop, Instant now) {
+        try {
+            Number id = (Number) shop.getClass().getMethod("getShopId").invoke(shop);
+            java.util.Optional<ShopLinksService.ShopLink> link = shopLinks.linkOf(id.longValue());
+            link.ifPresent(found -> {
+                pruneLinkedTrades(now.minus(MAX_RETENTION));
+                if (linkedTrades.size() >= MAX_OBSERVATIONS) linkedTrades.removeFirst();
+                linkedTrades.addLast(new LinkedTrade(found, now));
+            });
+            if (link.isPresent() && linkedSaleSink != null) reportLinkedSale(event, shop, link.get());
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+    }
+
+    /** Only a selling shop earns its owner gold; a buying shop pays it out, so it reports nothing. */
+    void reportLinkedSale(Object event, Object shop, ShopLinksService.ShopLink link)
+            throws ReflectiveOperationException {
+        java.util.Optional<QuickShopAdapter.ShopInfo> info = QuickShopAdapter.describe(shop);
+        if (info.isEmpty() || !info.get().selling()) return;
+        double balance = ((Number) event.getClass().getMethod("getBalance").invoke(event)).doubleValue();
+        double tax = ((Number) event.getClass().getMethod("getTax").invoke(event)).doubleValue();
+        double income = balance - Math.max(0, tax);
+        if (!Double.isFinite(income) || income <= 0) return;
+        linkedSaleSink.onLinkedSale(link, info.get().owner(), income);
     }
 
     static CommerceObservation normalize(Number amount, Number balance, Instant observedAt) {

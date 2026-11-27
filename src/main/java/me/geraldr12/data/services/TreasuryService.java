@@ -11,8 +11,13 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -50,6 +55,7 @@ public class TreasuryService {
 
     private static final Logger LOG = Logger.getLogger("Stonks");
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+    static final int RECEIPT_MEMORY = 200;
 
     private final Gateway gateway;
     private final Path ledger;
@@ -57,6 +63,15 @@ public class TreasuryService {
     private double owed;
     private double paid;
     private double unbacked;
+    private double pendingCredit;
+    private double pendingPayout;
+    private ShopSettlement pendingShop;
+    private boolean storageUnavailable;
+    /** Last TNE receipts that settled a shop trade, oldest first, so one receipt never settles twice. */
+    private final Deque<String> shopReceipts = new ArrayDeque<>();
+
+    public record ShopSettlement(String account, String player, String direction, double amount, double before) {
+    }
 
     public TreasuryService(Gateway gateway, Path ledger) {
         this.gateway = gateway;
@@ -85,6 +100,10 @@ public class TreasuryService {
 
     /** Tries to deposit what is owed. Called by {@link #credit} and on startup. */
     public synchronized void flush() {
+        if (needsReview()) {
+            if (!storageUnavailable) save();
+            return;
+        }
         if (!enabled() || !(owed > 0)) {
             save();
             return;
@@ -94,17 +113,23 @@ public class TreasuryService {
             save();
             return;
         }
+        pendingCredit = amount;
+        if (!save()) {
+            pendingCredit = 0;
+            return;
+        }
         boolean ok;
         try {
             ok = gateway.deposit(gateway.account(), amount);
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Treasury deposit failed; it will be retried.", e);
-            ok = false;
+            LOG.log(Level.SEVERE, "Treasury deposit needs review. It will not be retried automatically.", e);
+            return;
         }
         if (ok) {
             owed = add(owed, -amount);
             credited = add(credited, amount);
         }
+        pendingCredit = 0;
         save();
     }
 
@@ -125,7 +150,7 @@ public class TreasuryService {
 
     /** True when the treasury account holds at least {@code amount} beyond what Stonks still owes it. */
     public synchronized boolean canPay(double amount) {
-        if (!enabled() || !Double.isFinite(amount) || amount < 0) return false;
+        if (!enabled() || needsReview() || !Double.isFinite(amount) || amount < 0) return false;
         double balance;
         try {
             balance = gateway.balance(gateway.account());
@@ -136,26 +161,114 @@ public class TreasuryService {
     }
 
     /**
-     * Takes money out of the treasury for something the server paid a player (an admin-shop sale).
-     * A refused withdrawal is counted as {@code unbacked} so staff can see it; it is never retried.
+     * Records a backed trade before ExcellentShop runs and reserves treasury funds for a sale.
      */
-    public synchronized boolean pay(double amount) {
-        if (!enabled() || !Double.isFinite(amount) || amount <= 0) return true;
+    public synchronized boolean beginShop(ShopSettlement settlement) {
+        if (!enabled() || needsReview() || !gateway.account().equals(settlement.account())
+                || !Double.isFinite(settlement.amount()) || settlement.amount() <= 0
+                || !Double.isFinite(settlement.before()) || settlement.before() < 0) return false;
+        pendingShop = settlement;
+        if (!save()) return false;
+        if ("BUY".equals(settlement.direction())) return true;
+        if (pay(settlement.amount())) return true;
+        if (pendingPayout == 0 && !storageUnavailable) {
+            pendingShop = null;
+            save();
+        }
+        return false;
+    }
+
+    /**
+     * Takes {@code amount} out of the treasury account so staff can put it into a company's funds.
+     * Refused when the account cannot cover it; an unconfirmed withdrawal pauses the treasury like a shop payout.
+     */
+    public synchronized boolean grant(double amount) {
+        if (!canPay(amount) || !(amount > 0)) return false;
+        return pay(amount);
+    }
+
+    private boolean pay(double amount) {
+        pendingPayout = amount;
+        if (!save()) {
+            pendingPayout = 0;
+            return false;
+        }
         boolean ok;
         try {
             ok = gateway.withdraw(gateway.account(), amount);
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Treasury withdrawal failed.", e);
-            ok = false;
+            LOG.log(Level.SEVERE, "Treasury withdrawal needs review. Server shop payouts are paused.", e);
+            return false;
         }
         if (ok) {
             paid = add(paid, amount);
-        } else {
-            unbacked = add(unbacked, amount);
-            LOG.warning("Treasury could not cover a payout of " + amount + "; recorded as unbacked.");
         }
-        save();
-        return ok;
+        pendingPayout = 0;
+        return save() && ok;
+    }
+
+    /**
+     * Finalizes a trade whose player side TNE confirmed with a receipt (successful, exact amount, same call stack).
+     * Same guards as {@link #finishShop} without reading a balance; a receipt id already used leaves the trade
+     * for manual review.
+     */
+    public synchronized boolean finishShopReceipted(ShopSettlement settlement, UUID receiptId) {
+        return finishShopReceipted(settlement, receiptId == null ? null : List.of(receiptId));
+    }
+
+    /**
+     * Same as {@link #finishShopReceipted(ShopSettlement, UUID)} for a trade that TNE paid in several transactions
+     * (ExcellentShop pays one per shop of the sold items): every receipt must be new.
+     */
+    public synchronized boolean finishShopReceipted(ShopSettlement settlement, List<UUID> receiptIds) {
+        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0 || receiptIds == null
+                || receiptIds.isEmpty() || !settlement.account().equals(gateway.account())) {
+            return false;
+        }
+        List<String> ids = new ArrayList<>();
+        for (UUID receiptId : receiptIds) {
+            if (receiptId == null) return false;
+            String id = receiptId.toString();
+            if (shopReceipts.contains(id) || ids.contains(id)) return false;
+            ids.add(id);
+        }
+        ids.forEach(shopReceipts::addLast);
+        while (shopReceipts.size() > RECEIPT_MEMORY) shopReceipts.removeFirst();
+        if ("BUY".equals(settlement.direction())) owed = add(owed, settlement.amount());
+        pendingShop = null;
+        if (!save()) return false;
+        if (owed > 0) flush();
+        return true;
+    }
+
+    /**
+     * Finalizes only an observed debit/credit or a cancellation with an unchanged balance.
+     * A failed observation deliberately leaves the persisted operation for manual review.
+     */
+    public synchronized boolean finishShop(ShopSettlement settlement, boolean cancelled, double after) {
+        if (pendingShop != settlement || storageUnavailable || pendingPayout != 0
+                || !settlement.account().equals(gateway.account()) || !Double.isFinite(after) || after < 0) {
+            return false;
+        }
+        boolean purchase = "BUY".equals(settlement.direction());
+        double expectedDelta = cancelled ? 0 : purchase ? -settlement.amount() : settlement.amount();
+        if (Double.compare(add(settlement.before(), expectedDelta), add(after, 0)) != 0) return false;
+        // A cancelled sale returns the already debited treasury funds through the existing owed ledger.
+        if ((!cancelled && purchase) || (cancelled && !purchase)) {
+            owed = add(owed, settlement.amount());
+        }
+        pendingShop = null;
+        if (!save()) return false;
+        if (owed > 0) flush();
+        return true;
+    }
+
+    public synchronized String account() {
+        return gateway.account();
+    }
+
+    public synchronized boolean needsReview() {
+        return storageUnavailable || pendingCredit != 0 || pendingPayout != 0 || pendingShop != null;
     }
 
     public synchronized double paid() {
@@ -195,18 +308,35 @@ public class TreasuryService {
             owed = root.get("owed") instanceof Number n ? n.doubleValue() : 0;
             paid = root.get("paid") instanceof Number n ? n.doubleValue() : 0;
             unbacked = root.get("unbacked") instanceof Number n ? n.doubleValue() : 0;
+            pendingCredit = root.get("pendingCredit") instanceof Number n ? n.doubleValue() : 0;
+            pendingPayout = root.get("pendingPayout") instanceof Number n ? n.doubleValue() : 0;
+            if (root.get("pendingShop") != null) {
+                pendingShop = YAML.convertValue(root.get("pendingShop"), ShopSettlement.class);
+            }
+            if (root.get("shopReceipts") instanceof List<?> receipts) {
+                for (Object receipt : receipts) {
+                    if (receipt != null) shopReceipts.addLast(String.valueOf(receipt));
+                }
+            }
+            if (needsReview()) LOG.severe("Treasury has a pending Vault operation; inspect the ledger before resuming it.");
         } catch (IOException | RuntimeException e) {
-            LOG.log(Level.WARNING, "Unable to read " + ledger + "; treasury totals start at zero.", e);
+            storageUnavailable = true;
+            LOG.log(Level.SEVERE, "Unable to read treasury ledger; treasury operations are paused.", e);
         }
     }
 
-    private void save() {
+    private boolean save() {
+        if (storageUnavailable) return false;
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("account", gateway.account() == null ? "" : gateway.account());
         root.put("credited", credited);
         root.put("owed", owed);
         root.put("paid", paid);
         root.put("unbacked", unbacked);
+        root.put("pendingCredit", pendingCredit);
+        root.put("pendingPayout", pendingPayout);
+        if (pendingShop != null) root.put("pendingShop", pendingShop);
+        if (!shopReceipts.isEmpty()) root.put("shopReceipts", new ArrayList<>(shopReceipts));
         Path temporary = null;
         try {
             Files.createDirectories(ledger.getParent());
@@ -218,8 +348,11 @@ public class TreasuryService {
                 Files.move(temporary, ledger, StandardCopyOption.REPLACE_EXISTING);
             }
             temporary = null;
+            return true;
         } catch (IOException e) {
+            storageUnavailable = true;
             LOG.log(Level.SEVERE, "Unable to save treasury ledger " + ledger, e);
+            return false;
         } finally {
             if (temporary != null) {
                 try {

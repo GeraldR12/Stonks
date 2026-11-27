@@ -39,7 +39,7 @@ class CreateDuplicateNameTest {
         verify(fixture.player).sendMessage("A company with that name already exists.");
         verify(companies, never()).reserveCompanyId(any());
         verify(companies, never()).saveReservedCompany(any());
-        verify(fixture.journal, never()).prepare(any());
+        verify(fixture.journal, never()).prepareCurrentSchema(any());
         verifyNoInteractions(fixture.economy, fixture.players);
         assertTrue(fixture.journal.getAllPendingOrReconciliationRecords().isEmpty());
     }
@@ -57,7 +57,7 @@ class CreateDuplicateNameTest {
         fixture.command();
 
         verify(companies).reserveCompanyId(any());
-        verify(fixture.journal).prepare(any());
+        verify(fixture.journal).prepareCurrentSchema(any());
         verify(fixture.economy).withdrawPlayer(fixture.player, 22.0);
         verify(fixture.player).sendMessage("Created Acme");
     }

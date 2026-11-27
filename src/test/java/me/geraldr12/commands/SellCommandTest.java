@@ -156,6 +156,8 @@ class SellCommandTest {
         var companyTwo = mock(me.geraldr12.data.dao.CompanyDao.class);
         when(companyOne.getId()).thenReturn(1);
         when(companyTwo.getId()).thenReturn(0);
+        when(companyOne.isTrading()).thenReturn(true);
+        when(companyTwo.isTrading()).thenReturn(true);
         when(plugin.getCompaniesService().getAllCompanies()).thenReturn(List.of(companyOne, companyTwo));
 
         assertEquals(List.of("1", "0"), command.onTabComplete(player, new String[]{""}));
