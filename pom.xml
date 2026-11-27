@@ -26,8 +26,8 @@
     </repository>
     <repository>
       <id>dev-command-repository</id>
-      <name>GitHub Hugo1307 DevCommand Repository</name>
-      <url>https://maven.pkg.github.com/Hugo1307/DevCommand</url>
+      <name>Vendored dev-command (in-project libs)</name>
+      <url>file://${project.basedir}/libs</url>
     </repository>
   </repositories>
 
